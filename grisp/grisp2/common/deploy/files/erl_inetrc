@@ -1,0 +1,16 @@
+%--- Erlang Inet Configuration -------------------------------------------------
+
+% Add hosts
+%{host, {192,168,1,10}, ["cedric-Latitude-E6320"]}.
+{host, {192,168,137,50}, ["cedric-Latitude-E6320"]}.
+%{host, {130,104,100,57}, ["cedric-Latitude-E6320"]}.
+{host, {192,168,1,220}, ["my_grisp_board"]}.
+
+% Do not monitor the hosts file
+{hosts_file, ""}.
+
+% Disable caching
+{cache_size, 0}.
+
+% Specify lookup method
+{lookup, [file, dns]}.
