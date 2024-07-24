@@ -2,8 +2,6 @@
 
 -export([robot_init/1,modify_frequency/1]).
 
--record(cal, {acc, gyro}).
-
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(DEG_TO_RAD, math:pi()/180.0).
 
@@ -38,7 +36,7 @@ robot_init(Hera_pid) ->
     io:format("Calibrating... Do not move the pmod_nav!~n"),
     grisp_led:color(1, {1, 0, 0}),
     grisp_led:color(2, {1, 0, 0}),
-    [_Gx0,Gy0,_Gz0] = calibr_mes:calibrate(),
+    [_Gx0,Gy0,_Gz0] = calibrate(),
     io:format("Done calibrating~n"),
 
     %Kalman matrices
@@ -333,7 +331,8 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 calibrate() ->
-    Data = [list_to_tuple(pmod_nav:read(Comp, Registers)) || _ <- lists:seq(1,N)],
+    N = 500,
+    Data = [list_to_tuple(pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])) || _ <- lists:seq(1,N)],
     {X, Y, Z} = lists:unzip3(Data),
     [lists:sum(X)/N, lists:sum(Y)/N, lists:sum(Z)/N]. %[Gx0, Gy0, Gz0]
 
@@ -423,15 +422,6 @@ frequency_computation(Dt, N, Freq, Mean_Freq) ->
             Mean_Freq_New = Mean_Freq
     end,
     {N_New, Freq_New, Mean_Freq_New}.
-
-cut_motors(Angle) ->
-    if  
-        abs(Angle) > ?MAX_ANGLE ->
-            Pause = 0.0;
-        true ->
-            Pause = 1.0  
-    end,
-    Pause.
 
 wait(T) -> 
 	Tnow = erlang:system_time()/1.0e6,
