@@ -1,0 +1,36 @@
+[
+{hera, [
+    {log_data, true}
+]},
+
+{kernel, [
+    {distributed, [{hera_synchronization, 0, [{
+    }]}]},
+
+    {sync_nodes_mandatory, []},
+
+    {sync_nodes_optional, [
+        balancing_robot@lunelis,
+        balancing_robot@nav_1
+    ]},
+
+    {sync_nodes_timeout, 5000},
+    {net_ticktime, 8}
+]},
+
+{grisp , [
+    {drivers , [
+        {spi , grisp_emulation_spi_drv} ,
+        {gpio , grisp_emulation_gpio_drv} ,
+        {i2c , grisp_emulation_i2c_drv}
+    ]} ,
+    {devices , [
+        %{spi2 , pmod_nav}
+    ]},
+    {emulation, {grisp2, grisp_emulation}},
+        {devices, [
+            {spi1, pmod_gyro},
+            {spi2, pmod_nav}
+        ]}
+]}
+].

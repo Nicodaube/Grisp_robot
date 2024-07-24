@@ -1,0 +1,16 @@
+{application, balancing_robot, [
+    {description, "GRiSP application for dynamic balancing of a moving robot"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {balancing_robot, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        grisp
+    ]},
+    {env,[]},
+    {modules, []},
+
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.
