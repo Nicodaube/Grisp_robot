@@ -54,9 +54,9 @@ robot_init(Hera_pid) ->
 	io:format("Starting movement of the robot.~n"),
 
     %Call main loop
-    robot_main(T0, Hera_pid, {0.0, rest, false}, {T0, X0, P0}, I2Cbus, {0, T0, []}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
+    robot_main(T0, Hera_pid, {rest, false}, {T0, X0, P0}, I2Cbus, {0, T0, []}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
 
-robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Check}, {T0, X0, P0}, I2Cbus, {Logging, Log_End, Log_List}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, {Logging, Log_End, Log_List}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
 
     %Delta time of loop
     T1 = erlang:system_time()/1.0e6, %[ms]
@@ -67,7 +67,7 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
     %%%%%%%%%%%%%%%%%%%%%%%%%
 
     %Read data
-    [Gy,Ax,_Ay,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_y_xl, out_z_xl], #{g_unit => dps}),
+    [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
 
     %%%%%%%%%%%%%%%%%%%%%%%%
     %%% Input from ESP32 %%%
@@ -75,7 +75,7 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
 
     %Receive I2C and conversion
     [<<SL1,SL2,SR1,SR2,CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
-	[Speed_L,Speed_R] = hera_com:decode_half_float(<<SL1,SL2,SR1,SR2>>),
+	[Speed_L,Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
     Speed = (Speed_L + Speed_R)/2,
 
     %Retrieve flags from ESP32
@@ -103,6 +103,10 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
 	[Th_Kalman, _W_Kalman] = mat:to_array(X1),
     Angle_Kalman = Th_Kalman*?RAD_TO_DEG,
 
+    %%
+    T_after_kalman = erlang:system_time()/1.0e6, %[ms]
+    %%
+
     %Complementary angle computation
     K = 1.25/(1.25+(1.0/Mean_Freq)),
     {Angle_Complem_New, Angle_Rate_New} = complem_angle({Dt, Ax, Az, Gy, Gy0, K, Angle_Complem, Angle_Rate}),
@@ -118,7 +122,8 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
     %Takes as input:
     % -Measures
     % -Process IDs of the two PID controllers
-    % -Velocity to reach and loopback velocity of trapezoidal profile
+    % -Advance and turning velocity to reach and loopback velocity of trapezoidal profile
+
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
     %Gives as output:
     % -Acceleration of the motors -> sent to ESP32 
@@ -129,20 +134,14 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
     %%% Output to ESP32 %%%
     %%%%%%%%%%%%%%%%%%%%%%%
 
-    %Timer for free fall
-    if 
-        (Robot_State == prepare_arms) and Arm_Ready -> End_Timer_Freefall_New = erlang:system_time()/1.0e6 + 1000;
-        true -> End_Timer_Freefall_New = End_Timer_Freefall
-    end,
-
     %State of the robot
     if 
-        Robot_Up_Check and (abs(Angle) > 20.0) ->
-            Robot_Up_Check_New = false;
-        not Robot_Up_Check and (abs(Angle) < 18.0) -> 
-            Robot_Up_Check_New = true;
+        Robot_Up and (abs(Angle) > 20.0) ->
+            Robot_Up_New = false;
+        not Robot_Up and (abs(Angle) < 18.0) -> 
+            Robot_Up_New = true;
         true ->
-            Robot_Up_Check_New = Robot_Up_Check
+            Robot_Up_New = Robot_Up
     end,
     if
         Angle > 0.0 ->
@@ -160,32 +159,31 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
             end;
         raising -> 
             if
-                Robot_Up_Check -> Next_Robot_State = stand_up;
+                Robot_Up -> Next_Robot_State = stand_up;
                 not Get_Up -> Next_Robot_State = soft_fall;
                 true -> Next_Robot_State = raising
             end;
         stand_up -> 
             if
                 not Get_Up -> Next_Robot_State = wait_for_extend;
-                not Robot_Up_Check -> Next_Robot_State = rest;
+                not Robot_Up -> Next_Robot_State = rest;
                 true -> Next_Robot_State = stand_up
             end;
-        wait_for_extend -> 
+        wait_for_extend -> %Buffer state while Next_Robot_State switches state
             Next_Robot_State = prepare_arms;
         prepare_arms -> 
             if
                 Arm_Ready -> Next_Robot_State = free_fall;
                 Get_Up -> Next_Robot_State = stand_up;
-                not Robot_Up_Check -> Next_Robot_State = rest;
+                not Robot_Up -> Next_Robot_State = rest;
                 true -> Next_Robot_State = prepare_arms
             end;
         free_fall -> 
-            Time = erlang:system_time()/1.0e6,
             if
-                Time > End_Timer_Freefall_New -> Next_Robot_State = wait_for_retract;
+                abs(Angle) > 10 -> Next_Robot_State = wait_for_retract;
                 true -> Next_Robot_State = free_fall
             end;
-        wait_for_retract ->
+        wait_for_retract -> %Buffer state while Next_Robot_State switches state
             Next_Robot_State = soft_fall;
         soft_fall -> 
             if
@@ -201,46 +199,46 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
             Power    = 0,
             Freeze   = 0,
             Extend   = 0,
-            Robot_Up = 0;
+            Robot_Up_Bit = 0;
         raising -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 1,
-            Robot_Up = 0;
+            Robot_Up_Bit = 0;
         stand_up -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 0,
-            Robot_Up = 1;
+            Robot_Up_Bit = 1;
         wait_for_extend -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 1,
-            Robot_Up = 1;
+            Robot_Up_Bit = 1;
         prepare_arms -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 1,
-            Robot_Up = 1;
+            Robot_Up_Bit = 1;
         free_fall -> 
             Power    = 1,
             Freeze   = 1,
             Extend   = 1,
-            Robot_Up = 1;
+            Robot_Up_Bit = 1;
         wait_for_retract -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 0,
-            Robot_Up = 0;
+            Robot_Up_Bit = 0;
         soft_fall -> 
             Power    = 1,
             Freeze   = 0,
             Extend   = 0,
-            Robot_Up = 0
+            Robot_Up_Bit = 0
     end,
 
     %Send output to ESP32
-    Output_Byte = get_byte([Power, Freeze, Extend, Robot_Up, F_B, 0, 0, 0]),
+    Output_Byte = get_byte([Power, Freeze, Extend, Robot_Up_Bit, F_B, 0, 0, 0]),
     [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
 
@@ -278,8 +276,10 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
     %Check for start or end of logging sequence
     if
         not Logging and Logging_New ->
+            io:format("send start log~n"),
             Hera_pid ! {self(), start_log};
         Logging and not Logging_New ->
+            io:format("send stop log~n"),
             grisp_led:color(1, {1, 1, 0}),
             grisp_led:color(2, {1, 1, 0}),
             Hera_pid ! {self(), stop_log};
@@ -289,13 +289,14 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
 
     %Send values to ESP32 if asked, else stack up values in list
     receive
-        {From, log_values} ->    
-            From ! {self(), Log_List},
+        {From, log_values} ->  
+            io:format("send log vals~n"),
+            From ! {self(), log, Log_List},
             Log_List_New = []
     after 0 ->
         if
-            Logging_New == 1.0 ->
-                Log_List_New = lists:append(Log_List, [T1-Start_Time, Mean_Freq, Gy, Acc, CtrlByte, Angle_Accelerometer, Angle_Kalman, Angle_Complem, Adv_V_Ref, Switch]);
+            Logging_New ->
+                Log_List_New = lists:append(Log_List, [T1-Start_Time, 1/Dt, Gy, Acc, CtrlByte, Angle_Accelerometer, Angle_Kalman, Angle_Complem, Adv_V_Ref, Switch]);
             true ->
                 Log_List_New = Log_List
         end
@@ -303,12 +304,14 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
 
     %Communication with Hera (more messages can be implemented by the user)
     receive
+        {From1, get_all_data} -> From1 ! {self(), data, [T1-Start_Time, 1/Dt, Gy, Acc, CtrlByte, Angle_Accelerometer, Angle_Kalman, Angle_Complem, Adv_V_Ref, Switch]};
         {From1, freq} -> From1 ! {self(), 1/Dt};
         {From2, acc} -> From2 ! {self(), Acc};
-        {_, Msg} -> io:format("Message [~p] not recognized. ~nPossible querries are: [freq, acc]. ~nMore querries can be added.", [Msg])
+        {_, Msg} -> io:format("Message [~p] not recognized. ~nPossible querries are: [get_all_data, freq, acc]. ~nMore querries can be added.", [Msg])
     after 0 ->
         ok
     end,
+
 
     %Imposed maximum frequency
     T2 = erlang:system_time()/1.0e6,
@@ -323,7 +326,7 @@ robot_main(Start_Time, Hera_pid, {End_Timer_Freefall, Robot_State, Robot_Up_Chec
     T_End_New = erlang:system_time()/1.0e6,
 
     %Loop back with updated state
-    robot_main(Start_Time, Hera_pid, {End_Timer_Freefall_New, Next_Robot_State, Robot_Up_Check_New}, {T1, X1, P1}, I2Cbus, {Logging_New, Log_End_New, Log_List_New}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, Hera_pid, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, I2Cbus, {Logging_New, Log_End_New, Log_List_New}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -408,7 +411,7 @@ turn_ref(Left, Right) ->
 frequency_computation(Dt, N, Freq, Mean_Freq) ->
     if 
         N == 100 ->
-            erlang:display(Freq),
+            io:format("robot freq:      ~.2f~n",[Freq]),
             N_New = 0,
             Freq_New = 0,
             Mean_Freq_New = Freq,
