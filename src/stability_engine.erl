@@ -28,6 +28,7 @@ controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Re
                     Adv_V_Ref_New = 0.0
             end
     end,
+    % Adv_V_Ref_New = Adv_V_Goal,
 
     %Saturate turning acceleration
     if   
@@ -45,6 +46,7 @@ controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Re
                     Turn_V_Ref_New = 0.0
             end
     end,
+    % Turn_V_Ref_New = Turn_V_Goal,
 
     %Speed PI
     Pid_Speed ! {self(), {set_point, Adv_V_Ref_New}},
