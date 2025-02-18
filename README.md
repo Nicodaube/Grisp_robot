@@ -16,6 +16,7 @@ First, be sure you have the latest version of all the basic packages:
 ```bash
 sudo apt-get update
 sudo apt-get upgrade
+sudo apt install -y libncurses5-dev libncursesw5-dev curl build-essential libssl-dev
 ```
 
 ### Installing Kerl
@@ -37,6 +38,7 @@ nano ~/.bashrc
 
 Add the following line
 ```bash
+#KERL
 export PATH="$PATH:/usr/local/bin/kerl"
 ```
 
@@ -59,7 +61,8 @@ kerl upgrade
 Erlang is the main tool to use in this project, we will here use kerl to build it. First find the latest release with :
 
 ```bash
-kerl list releases
+kerl update releases
+kerl list releases all
 ```
 
 Then use the following command to build a release (changing ${RELEASE_NUM} by the latest supported release number (27.2.2) for me):
@@ -74,6 +77,38 @@ Then install the build :
 kerl install ${RELEASE_NUM} /usr/local/lib/erlang/${RELEASE_NUM}
 ```
 
+If you don't have yet the permission to write in `/usr/local/lib` use :
+
+```bash
+sudo chown -R $USER:$USER /usr/local/lib
+```
+
+You must then activate the erlang install :
+
+Either for the current session :
+```bash
+. /usr/local/lib/erlang/${RELEASE_NUM}/activate
+```
+
+Or for all time :
+
+```bash
+. /usr/local/lib/erlang/${RELEASE_NUM}/activate
+nano ~/.bashrc
+```
+
+And add 
+```bash
+#ERL
+export PATH="$PATH:/usr/local/lib/erlang/27.2.2/bin"
+```
+
+Then update path with:
+
+```bash
+source ~/.bashrc
+```
+
 ### Install rebar3
 
 Download the rebar3 e-script from [here](https://www.rebar3.org/)
@@ -81,6 +116,8 @@ Download the rebar3 e-script from [here](https://www.rebar3.org/)
 Then, install using :
 
 ```bash
+cd ~/Downloads
+chmod a+x ./rebar3
 ./rebar3 local install
 ```
 
@@ -94,7 +131,7 @@ And add at the end :
 
 ```bash
 #REBAR
-export PATH=$PATH:~/.cache/rebar3/bin
+export PATH="$PATH:~/.cache/rebar3/bin"
 ```
 
 Then update rebar3 using :
