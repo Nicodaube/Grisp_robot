@@ -131,7 +131,7 @@ And add at the end :
 
 ```bash
 #REBAR
-export PATH="$PATH:~/.cache/rebar3/bin"
+export PATH="export PATH=/home/${username}/.cache/rebar3/bin:$PATH"
 ```
 
 Then update rebar3 using :
