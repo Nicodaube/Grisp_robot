@@ -162,49 +162,19 @@ At this point you should be able to run the demo app in the grisp tutorials.
 
 ## Requirements for the balancing robot
 
-For the Lilygo code deployment, see the other repository.
+For the Lilygo code deployment, see [this](https://github.com/Nicodaube/Robot/blob/main/lilygo_robot_code/lilyGO_tuto.md) other repository.
 
-### Install docker
+Now, we will install the GRISP toolchain. Due to an issue when trying to build the toolchain with the docker image, we will use a prebuilt image of the toolchain, available [here](https://github.com/grisp/grisp/wiki/Building-the-VM-from-source#use).
 
-Coming from the official [docker website](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository)
+In the rebar.config, you can then modify the toolchain path like so : ![alt text](./image_md/toolchain.png)
 
-```bash
-# Add Docker's official GPG key:
-sudo apt-get update
-sudo apt-get install ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
+Now, modify all the rebar.config file to suit your path and your OTP version. 
 
-# Add the repository to Apt sources:
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-```
+## Deploying the software to an SD card
 
-Then install using :
+go to the balancing_robot directory and run the following command :
 
 ```bash
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+rebar3 grisp build
+rebar3 grisp deploy
 ```
-
-To avoid needing to use sudo with docker :
-
-```bash
-sudo usermod -aG docker ${USER}
-newgrp docker
-```
-
-Now test docker using
-
-```bash
-docker run hello-world
-```
-
-You should see a message `Hello from docker`
-
-
-Install grisp2-rtems toolchain
-Modify all the dependent files in the rebar.config file.
