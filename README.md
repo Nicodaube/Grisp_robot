@@ -142,7 +142,7 @@ rebar3 local upgrade
 
 Then, we need to install globally the plugins required for grisp devellopment with rebar3.
 
-create a file in `~/.config/rebar3/rebar.config`. Fill it with :
+create the file `rebar.config` in `~/.config/rebar3/`. Fill it with :
 
 ```erlang
 {plugins, [
@@ -158,11 +158,11 @@ rebar3 update
 rebar3 plugins upgrade rebar3_grisp
 ```
 
-At this point you should be able to run the demo app in the grisp tutorials.
+At this point you should be able to deploy the demo app in the grisp tutorials.
 
 ## Requirements for the balancing robot
 
-For the Lilygo code deployment, see [this](https://github.com/Nicodaube/Robot/blob/main/lilygo_robot_code/lilyGO_tuto.md) other repository.
+For the Lilygo code deployment, see [this](https://github.com/Nicodaube/Robot/blob/main/lilygo_robot_code/lilyGO_tuto.md) other repository. It contains all the code and the tutorials to setup your two LilyGo.
 
 Now, we will install the GRISP toolchain. Due to an issue when trying to build the toolchain with the docker image, we will use a prebuilt image of the toolchain, available [here](https://github.com/grisp/grisp/wiki/Building-the-VM-from-source#use).
 
