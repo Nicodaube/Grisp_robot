@@ -41,32 +41,27 @@ release_tab = True
 
 
 test_time = 0
-
-# main loop
-while running:
+def check_event():
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
+            global running 
             running = False
-    #get window size
-    width, height = screen.get_size()
-    arrow_rect = arrow_img.get_rect(center=(width // 2, height // 2))
 
-    #Get the keys pressed
-    keys = pygame.key.get_pressed()
-    x = 0
-    string = ""
-
+def check_keys_movement(keys):
+    global x
+    global running
+    global run
     if keys[pygame.K_z] or keys[pygame.K_UP]:
         x += 1
-    if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+    elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
         x += -1
-    if keys[pygame.K_q] or keys[pygame.K_LEFT]:
+    elif keys[pygame.K_q] or keys[pygame.K_LEFT]:
         x += 1j
-    if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+    elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
         x += -1j
-    if keys[pygame.K_ESCAPE]:
+    elif keys[pygame.K_ESCAPE]:
         running = False
-    if keys[pygame.K_SPACE]:
+    elif keys[pygame.K_SPACE]:
         if release_space:
             release_space = False
             if message < 10000000:
@@ -76,31 +71,54 @@ while running:
     else:
         release_space = True
 
-    if keys[pygame.K_TAB]:
-        if release_tab:
-            release_tab = False
-            kalman = not kalman
-    else:
-        release_tab = True
-
+def check_keys_kalman(keys, release_tab):
+    global kalman
     if keys[pygame.K_k]:
         kalman = True
-
-    if keys[pygame.K_c]:
+    elif keys[pygame.K_c]:
         kalman = False
-
-    if kalman :
-        string += "Kalman filter\n"
+    elif keys[pygame.K_TAB]:
+        if release_tab:
+            kalman = not kalman
+            return False
     else:
-        string += "Complementary filter\n"
+        return True
 
-    test = False
-    if keys[pygame.K_t]:
-        if release_t:
-            release_t = False
-            test = True
+def check_test(keys, release_t):
+    if keys[pygame.K_t] and release_t:
+            return True, False
     else:
-        release_t = True
+        return False, True
+
+def build_string():
+    global string
+    string += "DOWN \n" if not stand else "Up \n"
+    string += "Kalman filter\n" if kalman else "Complementary filter\n"
+    string += "Running\n" if run else "Stopped\n"
+    string += "Message: " + str(message) + "\n"
+
+    for i, line in enumerate(string.split("\n")):
+        text = font.render(line, True, (0, 128, 0))
+        screen.blit(text, (10, 10 + i * 30))
+
+def update_screen_size():   
+    width, height = screen.get_size()
+    return arrow_img.get_rect(center=(width // 2, height // 2))
+
+# main loop
+while running:
+    check_event()
+    arrow_rect = update_screen_size()
+    
+    #Get the keys pressed
+    keys = pygame.key.get_pressed()
+    x = 0
+    string = ""
+
+    check_keys_movement(keys)
+    release_tab = check_keys_kalman(keys, release_tab)
+
+    test, release_t = check_test(keys, release_t)
 
     if keys[pygame.K_RETURN]:
         if release_enter:
@@ -109,18 +127,11 @@ while running:
     else:
         release_enter = True
 
-    if not stand:
-        string += "DOWN \n"
-    else:
-        string += "UP \n"
-
-
     if test:
         test_time = time.time()
 
     #if (1<= time.time()-test_time < 10) : stand=True
     #if (10<= time.time()-test_time < 25) : stand=False
-
 
     # Clear the screen
     screen.fill(white)
@@ -136,22 +147,7 @@ while running:
         rotated_rect = rotated_arrow.get_rect(center=arrow_rect.center)
         screen.blit(rotated_arrow, rotated_rect.topleft)
 
-    # Draw the text
-
-    if run:
-        string += "Running\n"
-    else:
-        string += "Stopped\n"
-
-    string += "Message: " + str(message) + "\n"
-
-    for i, line in enumerate(string.split("\n")):
-        text = font.render(line, True, (0, 128, 0))
-        screen.blit(text, (10, 10 + i * 30))
-
-
-
-
+    build_string()
     pygame.display.flip()
 
     # Limit the frame rate
@@ -160,14 +156,9 @@ while running:
     data = run << 7 | kalman << 6 | test << 5 | stand << 4 | (x.real == 1) << 3 | (x.real == -1) << 2 | (
                 x.imag == 1) << 1 | (x.imag == -1)
     ser.write(bytes([data]))
-    # print data as binary
-    # print(bin(data))
 
-    # read data until \n is received
     Content = ser.readline()
-    # remove the \r and \n from the string
     Content = Content.decode().replace("\r\n", "")
-    # print(Content)
     message = int(Content)
 
 
