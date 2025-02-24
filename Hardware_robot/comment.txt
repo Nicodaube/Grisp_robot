@@ -1,0 +1,1 @@
+to open the assembly all the directories in Hardware_robot should be downloaded

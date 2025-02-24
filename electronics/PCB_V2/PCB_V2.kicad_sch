@@ -1,0 +1,48 @@
+(kicad_sch (version 20230121) (generator eeschema)
+
+  (uuid 89750a2e-d60a-49c9-9878-df499d5500bf)
+
+  (paper "A4")
+
+  (lib_symbols
+  )
+
+
+  (sheet (at 125.73 39.37) (size 72.39 78.74) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid a612c74f-b067-43ba-a045-23625b9c7925)
+    (property "Sheetname" "PMOD_interface" (at 125.73 38.6584 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "PMOD_interface.kicad_sch" (at 125.73 118.6946 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "PCB_V2"
+        (path "/89750a2e-d60a-49c9-9878-df499d5500bf" (page "3"))
+      )
+    )
+  )
+
+  (sheet (at 27.94 39.37) (size 74.93 77.47) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid fc62b659-9675-426d-9d97-1604f2b90a81)
+    (property "Sheetname" "Stepper" (at 27.94 38.6584 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "untitled.kicad_sch" (at 27.94 117.4246 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "PCB_V2"
+        (path "/89750a2e-d60a-49c9-9878-df499d5500bf" (page "2"))
+      )
+    )
+  )
+
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+)
