@@ -38,10 +38,14 @@ class User_interface:
 
         self.arrow_rect = self.arrow_img.get_rect(center=(self.WIDTH // 2, 100))
 
+######################################################### TRIGGER CHECK #################################################
+
     def check_event(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+
+######################################################### KEYBOARD FUNCTIONS #################################################
 
     def check_keys_movement(self, keys):
         if keys[pygame.K_z] or keys[pygame.K_UP]:
@@ -82,7 +86,6 @@ class User_interface:
         else:
             self.test, self.release_t =  False, True
 
-
     def check_standing(self, keys):
         if keys[pygame.K_RETURN]:
             if self.release_enter:
@@ -91,6 +94,8 @@ class User_interface:
                 
         else:
             self.release_enter = True
+
+######################################################### DRAWING FUNCTIONS #################################################
 
     def update_screen_size(self):   
         WIDTH, HEIGHT = self.screen.get_size()
@@ -117,7 +122,6 @@ class User_interface:
         for i, line in enumerate(self.string.split("\n")):
             text = font.render(line, True, (0, 128, 0))
             self.screen.blit(text, (10, 10 + i * 30))
-
 
 ######################################################### SERIAL COMM FUNCTIONS #################################################
 
