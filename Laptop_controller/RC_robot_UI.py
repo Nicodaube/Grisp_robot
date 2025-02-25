@@ -17,6 +17,7 @@ class User_interface:
     release_tab = True
     x = 0
     string = ""
+    image_dict = {}
 
     def __init__(self):
 
@@ -29,14 +30,16 @@ class User_interface:
         self.load_figures()
 
     def load_figures(self):
-        self.arrow_img = pygame.image.load('./img/arrow.png')
-        self.arrow_img = pygame.transform.scale(self.arrow_img, (self.arrow_img.get_width() // 4, self.arrow_img.get_height() // 4))
-        self.circle_img = pygame.image.load('./img/point.png')
-        self.circle_img = pygame.transform.scale(self.circle_img, (self.circle_img.get_width() // 2, self.circle_img.get_height() // 2))
-        self.stop_img = pygame.image.load('./img/Stop_sign.png')
-        self.stop_img = pygame.transform.scale(self.stop_img, (self.stop_img.get_width() // 10, self.stop_img.get_height() // 10))
+        arrow_img = pygame.image.load('./img/arrow.png')
+        arrow_img = pygame.transform.scale(arrow_img, (arrow_img.get_width() // 4, arrow_img.get_height() // 4))
+        circle_img = pygame.image.load('./img/point.png')
+        circle_img = pygame.transform.scale(circle_img, (circle_img.get_width() // 2, circle_img.get_height() // 2))
+        stop_img = pygame.image.load('./img/Stop_sign.png')
+        stop_img = pygame.transform.scale(stop_img, (stop_img.get_width() // 10, stop_img.get_height() // 10))
 
-        self.arrow_rect = self.arrow_img.get_rect(center=(self.WIDTH // 2, 100))
+        self.image_dict["arrow"] = arrow_img
+        self.image_dict["circle"] = circle_img
+        self.image_dict["stop"] = stop_img
 
 ######################################################### TRIGGER CHECK #################################################
 
@@ -98,23 +101,24 @@ class User_interface:
 ######################################################### DRAWING FUNCTIONS #################################################
 
     def update_screen_size(self):   
-        WIDTH, HEIGHT = self.screen.get_size()
-        return self.arrow_img.get_rect(center=(self.WIDTH // 2, 100))
+        self.WIDTH, self.HEIGHT = self.screen.get_size()
+        return self.image_dict.get("arrow").get_rect(center=(self.WIDTH // 2, 100))
 
     def draw_move_ctrl(self):
+        control_rect = self.image_dict.get("arrow").get_rect(center=(self.WIDTH // 2, 100))
         if self.message < 10000000:
-            self.screen.blit(self.stop_img, self.stop_img.get_rect(center = self.arrow_rect.center))
+            self.screen.blit(self.image_dict.get("stop"), self.image_dict.get("stop").get_rect(center = control_rect.center))
         elif abs(self.x) == 0:
-            self.screen.blit(self.circle_img, self.circle_img.get_rect(center = self.arrow_rect.center))
+            self.screen.blit(self.image_dict.get("circle"), self.image_dict.get("circle").get_rect(center = control_rect.center))
         else:
             angle = np.angle(self.x, deg=True)
-            rotated_arrow = pygame.transform.rotate(self.arrow_img, angle)
-            rotated_rect = rotated_arrow.get_rect(center = self.arrow_rect.center)
+            rotated_arrow = pygame.transform.rotate(self.image_dict.get("arrow"), angle)
+            rotated_rect = rotated_arrow.get_rect(center = control_rect.center)
             self.screen.blit(rotated_arrow, rotated_rect.topleft)
 
     def draw_string(self):
         font = pygame.font.Font(None, 36)
-        self.string += "DOWN \n" if not self.stand else "Up \n"
+        self.string += "DOWN \n" if not self.stand else "UP \n"
         self.string += "Kalman filter\n" if self.kalman else "Complementary filter\n"
         self.string += "Running\n" if self.run else "Stopped\n"
         self.string += "Message: " + str(self.message) + "\n"
