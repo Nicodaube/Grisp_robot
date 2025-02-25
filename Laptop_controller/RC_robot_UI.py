@@ -6,7 +6,7 @@ import serial
 import time
 
 class User_interface:
-    WIDTH, HEIGHT = 800, 600
+    WIDTH, HEIGHT = 1200, 1000
     running = True
     message = 0
     run = True
@@ -19,6 +19,7 @@ class User_interface:
     in_popup = False
     active_popup = None
     UI_elements = []
+    temp_origin = None
     
     x = 0
     string = ""
@@ -61,10 +62,7 @@ class User_interface:
         self.image_dict["arrow"] = arrow_img
         self.image_dict["circle"] = circle_img
         self.image_dict["stop"] = stop_img
-        self.image_dict["plus_L"] = plus_img
-        self.image_dict["plus_R"] = plus_img
-        self.image_dict["plus_T"] = plus_img
-        self.image_dict["plus_B"] = plus_img
+        self.image_dict["plus_L_0"] = plus_img
         self.image_dict["minus"] = minus_img
 
 ######################################################### TRIGGER CHECK #################################################
@@ -75,31 +73,32 @@ class User_interface:
                 self.running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if self.is_click_image("plus_L", event) and not self.in_popup:
+                if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
                     self.in_popup = True
-                    self.create_room_popup()
-                elif self.is_click_image("plus_R", event) and not self.in_popup:
-                    self.in_popup = True
-                    self.create_room_popup()
-                elif self.is_click_image("plus_T", event) and not self.in_popup:
-                    self.in_popup = True
-                    self.create_room_popup()
-                elif self.is_click_image("plus_B", event) and not self.in_popup:
-                    self.in_popup = True
+                    self.temp_origin = "plus_L_0"
                     self.create_room_popup()
 
+                for room in range(len(self.rooms)):
+                    for side in ["L", "R", "T", "B"]:
+                        name = "plus_" + side + "_" + str(room)
+                        if self.is_click_image(name, event) and not self.in_popup:
+                            self.in_popup = True
+                            self.temp_origin = name
+                            self.create_room_popup()
+                
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
                 width = self.UI_elements[0].get_text()
                 height = self.UI_elements[1].get_text()
                 self.UI_elements = []
                 if width != "" and height != "":
-                    self.rooms.append((int(width), int(height), self.WIDTH//2, self.HEIGHT//2))
+                    self.rooms.append((float(width), float(height), self.WIDTH//2, self.HEIGHT//2, self.temp_origin))
+
+                self.temp_origin = None
 
                 self.active_popup.kill()
 
                 self.active_popup = None
                 self.in_popup = False
-
 
             self.manager.process_events(event)
 
@@ -183,11 +182,12 @@ class User_interface:
 
     def draw_add_room(self):
         if len(self.rooms) == 0:
-            self.draw_image("plus_L", self.WIDTH//2, self.HEIGHT//2)
+            self.draw_image("plus_L_0", self.WIDTH//2, self.HEIGHT//2)
         else :
-            for (width, height, x, y) in self.rooms:
-                adapted_width = width * (self.HEIGHT//25)
-                adapted_height = height * (self.HEIGHT//25)
+            i = 0
+            for (width, height, x, y, origin) in self.rooms:
+                adapted_width = int(width * (self.HEIGHT//6))
+                adapted_height = int(height * (self.HEIGHT//6))
 
                 plus_L_x = x - adapted_width//2
                 plus_L_y = y            
@@ -201,19 +201,21 @@ class User_interface:
                 plus_B_x = x 
                 plus_B_y = y - adapted_height//2
                 
-                self.draw_image("plus_L", plus_L_x, plus_L_y)
-                self.draw_image("plus_R", plus_R_x, plus_R_y)
-                self.draw_image("plus_T", plus_T_x, plus_T_y)
-                self.draw_image("plus_B", plus_B_x, plus_B_y)              
+                self.load_new_images(i)
+
+                self.draw_image("plus_L_"+str(i), plus_L_x, plus_L_y)
+                self.draw_image("plus_R_"+str(i), plus_R_x, plus_R_y)
+                self.draw_image("plus_T_"+str(i), plus_T_x, plus_T_y)
+                self.draw_image("plus_B_"+str(i), plus_B_x, plus_B_y)
 
     def draw_image(self, name, x, y):
         plus_rect = self.image_dict.get(name).get_rect(center = (x, y))
         self.screen.blit(self.image_dict.get(name), self.image_dict.get(name).get_rect(center=plus_rect.center))
         self.rect_dict[name] = plus_rect
 
-    def draw_room(self, width, height, x, y):
-        adapted_width = width * (self.HEIGHT//25)
-        adapted_height = height * (self.HEIGHT//25)
+    def draw_room(self, width, height, x, y, origin):
+        adapted_width = int(width * (self.HEIGHT//6))
+        adapted_height = int(height * (self.HEIGHT//6))
 
         room_rect = pygame.Rect(0, 0, adapted_width, adapted_height)
         room_rect.center = (x, y)
@@ -305,12 +307,23 @@ class User_interface:
 
         Content = self.ser.readline()
         Content = Content.decode().replace("\r\n", "")
-        self.message = int(Content)
+        try :
+            self.message = int(Content)
+        except:
+            print("ERROR: serial connection")
 
 ############################################################ HELPER FUNCTION #####################################################
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
+    def load_new_images(self,room_num):
+        plus_img = pygame.image.load('./img/plus.png')
+        plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
+
+        for side in ["L", "R", "T", "B"]:
+            name = "plus_" + side + "_" + str(room_num)
+            self.image_dict[name] = plus_img
+
 ######################################################### MAIN LOOP ############################################################
     def main_loop(self):
         while self.running:
@@ -330,8 +343,8 @@ class User_interface:
 
             self.screen.fill((255, 255, 255))
 
-            for (width, height, x, y) in self.rooms:
-                self.draw_room(width, height, x, y)
+            for (width, height, x, y, origin) in self.rooms:
+                self.draw_room(width, height, x, y, origin)
 
             self.draw_move_ctrl()
             self.draw_add_room()
