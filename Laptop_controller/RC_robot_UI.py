@@ -61,7 +61,10 @@ class User_interface:
         self.image_dict["arrow"] = arrow_img
         self.image_dict["circle"] = circle_img
         self.image_dict["stop"] = stop_img
-        self.image_dict["plus"] = plus_img
+        self.image_dict["plus_L"] = plus_img
+        self.image_dict["plus_R"] = plus_img
+        self.image_dict["plus_T"] = plus_img
+        self.image_dict["plus_B"] = plus_img
         self.image_dict["minus"] = minus_img
 
 ######################################################### TRIGGER CHECK #################################################
@@ -72,20 +75,25 @@ class User_interface:
                 self.running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if self.rect_dict.get("plus").collidepoint(event.pos) and not self.in_popup:
+                if self.is_click_image("plus_L", event) and not self.in_popup:
+                    self.in_popup = True
+                    self.create_room_popup()
+                elif self.is_click_image("plus_R", event) and not self.in_popup:
+                    self.in_popup = True
+                    self.create_room_popup()
+                elif self.is_click_image("plus_T", event) and not self.in_popup:
+                    self.in_popup = True
+                    self.create_room_popup()
+                elif self.is_click_image("plus_B", event) and not self.in_popup:
                     self.in_popup = True
                     self.create_room_popup()
 
-            if event.type == pygame_gui.UI_WINDOW_CLOSE:
-                if self.in_popup:
-                    self.in_popup = False
-
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
-                width = int(self.UI_elements[0].get_text())
-                height = int(self.UI_elements[1].get_text())
+                width = self.UI_elements[0].get_text()
+                height = self.UI_elements[1].get_text()
                 self.UI_elements = []
-
-                self.rooms.append((width, height, self.WIDTH//2, self.HEIGHT//2))
+                if width != "" and height != "":
+                    self.rooms.append((int(width), int(height), self.WIDTH//2, self.HEIGHT//2))
 
                 self.active_popup.kill()
 
@@ -174,7 +182,29 @@ class User_interface:
             self.screen.blit(text, (10, 10 + i * 30))
 
     def draw_add_room(self):
-        self.draw_image("plus", self.WIDTH//2, self.HEIGHT//2)
+        if len(self.rooms) == 0:
+            self.draw_image("plus_L", self.WIDTH//2, self.HEIGHT//2)
+        else :
+            for (width, height, x, y) in self.rooms:
+                adapted_width = width * (self.HEIGHT//25)
+                adapted_height = height * (self.HEIGHT//25)
+
+                plus_L_x = x - adapted_width//2
+                plus_L_y = y            
+
+                plus_R_x = x + adapted_width//2
+                plus_R_y = y
+                
+                plus_T_x = x 
+                plus_T_y = y + adapted_height//2
+                
+                plus_B_x = x 
+                plus_B_y = y - adapted_height//2
+                
+                self.draw_image("plus_L", plus_L_x, plus_L_y)
+                self.draw_image("plus_R", plus_R_x, plus_R_y)
+                self.draw_image("plus_T", plus_T_x, plus_T_y)
+                self.draw_image("plus_B", plus_B_x, plus_B_y)              
 
     def draw_image(self, name, x, y):
         plus_rect = self.image_dict.get(name).get_rect(center = (x, y))
@@ -277,6 +307,10 @@ class User_interface:
         Content = Content.decode().replace("\r\n", "")
         self.message = int(Content)
 
+############################################################ HELPER FUNCTION #####################################################
+    def is_click_image(self, name, event):
+        return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
+    
 ######################################################### MAIN LOOP ############################################################
     def main_loop(self):
         while self.running:
@@ -296,13 +330,14 @@ class User_interface:
 
             self.screen.fill((255, 255, 255))
 
-            self.draw_move_ctrl()
-            if len(self.rooms) == 0:
-                self.draw_add_room()
-            self.draw_string()
-
             for (width, height, x, y) in self.rooms:
                 self.draw_room(width, height, x, y)
+
+            self.draw_move_ctrl()
+            self.draw_add_room()
+            self.draw_string()
+
+
 
             self.manager.update(self.clock.tick(60)/1000)
             self.manager.draw_ui(self.screen)
