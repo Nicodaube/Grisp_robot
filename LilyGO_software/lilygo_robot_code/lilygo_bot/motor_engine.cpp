@@ -241,11 +241,11 @@ void engine_update(unsigned long dt_loop) {
 
   if (f_MB > 0) {
     dt_MB = 1e6 / abs(f_MB);
-    digitalWrite(MOTOR_B_DIR_PIN, HIGH);
+    digitalWrite(MOTOR_B_DIR_PIN, LOW);
     dirB = -1;
   } else if (f_MB < 0) {
     dt_MB = 1e6 / abs(f_MB);
-    digitalWrite(MOTOR_B_DIR_PIN, LOW);
+    digitalWrite(MOTOR_B_DIR_PIN, HIGH);
     dirB = 1;
   } else {
     dirB = 0;
