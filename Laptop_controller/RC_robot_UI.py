@@ -91,7 +91,10 @@ class User_interface:
                 height = self.UI_elements[1].get_text()
                 self.UI_elements = []
                 if width != "" and height != "":
-                    self.rooms.append((float(width), float(height), self.WIDTH//2, self.HEIGHT//2, self.temp_origin))
+                    x = self.rect_dict[self.temp_origin].center[0]
+                    y = self.rect_dict[self.temp_origin].center[1]
+                    side = self.temp_origin[5]
+                    self.rooms.append((float(width), float(height), x, y, side))
 
                 self.temp_origin = None
 
@@ -184,8 +187,8 @@ class User_interface:
         if len(self.rooms) == 0:
             self.draw_image("plus_L_0", self.WIDTH//2, self.HEIGHT//2)
         else :
-            i = 0
-            for (width, height, x, y, origin) in self.rooms:
+            for i in range(len(self.rooms)):
+                (width, height, x, y, side) = self.rooms[i]
                 adapted_width = int(width * (self.HEIGHT//6))
                 adapted_height = int(height * (self.HEIGHT//6))
 
@@ -203,17 +206,18 @@ class User_interface:
                 
                 self.load_new_images(i)
 
-                self.draw_image("plus_L_"+str(i), plus_L_x, plus_L_y)
-                self.draw_image("plus_R_"+str(i), plus_R_x, plus_R_y)
-                self.draw_image("plus_T_"+str(i), plus_T_x, plus_T_y)
-                self.draw_image("plus_B_"+str(i), plus_B_x, plus_B_y)
+                self.draw_image("plus_L_" + str(i), plus_L_x, plus_L_y)
+                self.draw_image("plus_R_" + str(i), plus_R_x, plus_R_y)
+                self.draw_image("plus_T_" + str(i), plus_T_x, plus_T_y)
+                self.draw_image("plus_B_" + str(i), plus_B_x, plus_B_y)
+
 
     def draw_image(self, name, x, y):
         plus_rect = self.image_dict.get(name).get_rect(center = (x, y))
         self.screen.blit(self.image_dict.get(name), self.image_dict.get(name).get_rect(center=plus_rect.center))
         self.rect_dict[name] = plus_rect
 
-    def draw_room(self, width, height, x, y, origin):
+    def draw_room(self, width, height, x, y, side):
         adapted_width = int(width * (self.HEIGHT//6))
         adapted_height = int(height * (self.HEIGHT//6))
 
@@ -307,10 +311,7 @@ class User_interface:
 
         Content = self.ser.readline()
         Content = Content.decode().replace("\r\n", "")
-        try :
-            self.message = int(Content)
-        except:
-            print("ERROR: serial connection")
+        self.message = int(Content)
 
 ############################################################ HELPER FUNCTION #####################################################
     def is_click_image(self, name, event):
@@ -343,8 +344,8 @@ class User_interface:
 
             self.screen.fill((255, 255, 255))
 
-            for (width, height, x, y, origin) in self.rooms:
-                self.draw_room(width, height, x, y, origin)
+            for (width, height, x, y, side) in self.rooms:
+                self.draw_room(width, height, x, y, side)
 
             self.draw_move_ctrl()
             self.draw_add_room()
