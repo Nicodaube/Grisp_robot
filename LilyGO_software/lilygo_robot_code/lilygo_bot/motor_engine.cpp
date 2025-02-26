@@ -228,11 +228,11 @@ void engine_update(unsigned long dt_loop) {
   //compute the increment period from freq and set the direction
   if (f_MA < 0) {
     dt_MA = 1e6 / abs(f_MA);
-    digitalWrite(MOTOR_A_DIR_PIN, LOW);
+    digitalWrite(MOTOR_A_DIR_PIN, HIGH);
     dirA = 1;
   } else if (f_MA > 0) {
     dt_MA = 1e6 / abs(f_MA);
-    digitalWrite(MOTOR_A_DIR_PIN, HIGH);
+    digitalWrite(MOTOR_A_DIR_PIN, LOW);
     dirA = -1;
   } else {
     dirA = 0;
@@ -241,11 +241,11 @@ void engine_update(unsigned long dt_loop) {
 
   if (f_MB > 0) {
     dt_MB = 1e6 / abs(f_MB);
-    digitalWrite(MOTOR_B_DIR_PIN, LOW);
+    digitalWrite(MOTOR_B_DIR_PIN, HIGH);
     dirB = -1;
   } else if (f_MB < 0) {
     dt_MB = 1e6 / abs(f_MB);
-    digitalWrite(MOTOR_B_DIR_PIN, HIGH);
+    digitalWrite(MOTOR_B_DIR_PIN, LOW);
     dirB = 1;
   } else {
     dirB = 0;
@@ -253,11 +253,11 @@ void engine_update(unsigned long dt_loop) {
 
   if (f_MC > 0) {
     dt_MC = 1e6 / abs(f_MC);
-    digitalWrite(MOTOR_C_DIR_PIN, LOW);
+    digitalWrite(MOTOR_C_DIR_PIN, HIGH);
     dirC = -1;
   } else if (f_MC < 0) {
     dt_MC = 1e6 / abs(f_MC);
-    digitalWrite(MOTOR_C_DIR_PIN, HIGH);
+    digitalWrite(MOTOR_C_DIR_PIN, LOW);
     dirC = 1;
   } else {
     dirC = 0;
