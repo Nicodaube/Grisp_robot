@@ -29,14 +29,14 @@ class User_interface:
         self.load_figures()
 
     def load_figures(self):
-        self.arrow_img = pygame.image.load('./img/arrow.png')
+        self.arrow_img = pygame.image.load('Laptop_controller/img/arrow.png')
         self.arrow_img = pygame.transform.scale(self.arrow_img, (self.arrow_img.get_width() // 4, self.arrow_img.get_height() // 4))
-        self.circle_img = pygame.image.load('./img/point.png')
+        self.circle_img = pygame.image.load('Laptop_controller/img/point.png')
         self.circle_img = pygame.transform.scale(self.circle_img, (self.circle_img.get_width() // 2, self.circle_img.get_height() // 2))
-        self.stop_img = pygame.image.load('./img/Stop_sign.png')
+        self.stop_img = pygame.image.load('Laptop_controller/img/Stop_sign.png')
         self.stop_img = pygame.transform.scale(self.stop_img, (self.stop_img.get_width() // 10, self.stop_img.get_height() // 10))
 
-        self.arrow_rect = self.arrow_img.get_rect(center=(self.WIDTH // 2, 100))
+        self.arrow_rect = self.arrow_img.get_rect(center=(self.WIDTH // 2, self.HEIGHT // 2))
 
 ######################################################### TRIGGER CHECK #################################################
 
