@@ -34,7 +34,7 @@ class User_interface:
         self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
         
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.RESIZABLE)
-        pygame.display.set_caption("Rotation de la flèche")
+        pygame.display.set_caption("Robot Controller")
 
         self.manager = pygame_gui.UIManager((self.WIDTH, self.HEIGHT))
         self.clock = pygame.time.Clock()
