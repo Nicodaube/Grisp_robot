@@ -5,7 +5,7 @@ import numpy as np
 import serial
 
 class User_interface:
-    WIDTH, HEIGHT = 1200, 1000
+    WIDTH, HEIGHT = 1920, 1080
     running = True
     message = 0
     run = True
@@ -17,7 +17,7 @@ class User_interface:
     release_tab = True
     in_popup = False
     active_popup = None
-    UI_elements = []
+    UI_elements = {}
     temp_origin = None
     
     x = 0
@@ -26,8 +26,8 @@ class User_interface:
     rect_dict = {}
 
     rooms = []
+    sensor = []
     
-
     def __init__(self):
 
         pygame.init()
@@ -66,43 +66,54 @@ class User_interface:
 
 ######################################################### TRIGGER CHECK #################################################
 
-    def check_event(self):
+    def event_handler(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
+                self.event_click_on_plus(event)
+                
+            if event.type == pygame_gui.UI_BUTTON_PRESSED:
+                self.event_interact_popup(event)
+                
+
+            self.manager.process_events(event)
+
+    def event_click_on_plus(self, event):
+        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
                     self.in_popup = True
                     self.temp_origin = "plus_L_0"
                     self.create_room_popup()
 
-                for room in range(len(self.rooms)):
-                    for side in ["L", "R", "T", "B"]:
-                        name = "plus_" + side + "_" + str(room)
-                        if self.is_click_image(name, event) and not self.in_popup:
-                            self.in_popup = True
-                            self.temp_origin = name
-                            self.create_room_popup()
-                
-            if event.type == pygame_gui.UI_BUTTON_PRESSED:
-                width = self.UI_elements[0].get_text()
-                height = self.UI_elements[1].get_text()
-                self.UI_elements = []
-                if width != "" and height != "":
-                    x = self.rect_dict[self.temp_origin].center[0]
-                    y = self.rect_dict[self.temp_origin].center[1]
-                    side = self.temp_origin[5]
-                    self.rooms.append((float(width), float(height), x, y, side))
+        for room in range(len(self.rooms)):
+            for side in ["L", "R", "T", "B"]:
+                name = "plus_" + side + "_" + str(room)
+                if self.is_click_image(name, event) and not self.in_popup:
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_choice_popup()
 
-                self.temp_origin = None
-
-                self.active_popup.kill()
-
-                self.active_popup = None
-                self.in_popup = False
-
-            self.manager.process_events(event)
+    def event_interact_popup(self, event):
+        if event.ui_element == self.UI_elements["Room_Submit"]:
+                    width = self.UI_elements.get("Width").get_text()
+                    height = self.UI_elements.get("Height").get_text()
+                    if width != "" and height != "":
+                        x = self.rect_dict[self.temp_origin].center[0]
+                        y = self.rect_dict[self.temp_origin].center[1]
+                        side = self.temp_origin[5]
+                        self.rooms.append((float(width), float(height), x, y, side))
+                    self.close_popup()
+                    self.temp_origin = None
+        elif event.ui_element == self.UI_elements.get("Sensor"):
+            self.close_popup()
+            self.draw_sensor()
+            self.temp_origin = None
+        elif event.ui_element == self.UI_elements.get("Room"):
+            self.close_popup()
+            self.create_room_popup()
+                    
+        self.in_popup = False
 
 ######################################################### KEYBOARD FUNCTIONS #################################################
 
@@ -274,12 +285,67 @@ class User_interface:
                     plus_T_y -= 10
                     plus_B_y -= 10
 
-        self.load_new_images(i)
+        self.load_new_plus_images(i)
 
         self.draw_image("plus_L_" + str(i), plus_L_x, plus_L_y)
         self.draw_image("plus_R_" + str(i), plus_R_x, plus_R_y)
         self.draw_image("plus_T_" + str(i), plus_T_x, plus_T_y)
         self.draw_image("plus_B_" + str(i), plus_B_x, plus_B_y)
+
+    def draw_sensor(self):
+        sensor_img = pygame.image.load('./img/sensor.png')
+        sensor_img = pygame.transform.scale(sensor_img, (sensor_img.get_width() // 5, sensor_img.get_height() // 5))
+
+    def create_choice_popup(self):
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 3
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Add Component'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Do you Want to add a Room or a sensor ?",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Sensor"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Sensor",
+            manager=self.manager,
+            container=popup_window
+        )
+
+        current_y += button_height + margin
+
+        self.UI_elements["Room"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Room",
+            manager=self.manager,
+            container=popup_window
+        )
 
     def create_room_popup(self):
         # Calculate sizes for buttons and popup dimensions
@@ -325,11 +391,12 @@ class User_interface:
         )
         current_y += button_height + margin
 
-        self.UI_elements.append(pygame_gui.elements.UITextEntryLine(
+        self.UI_elements["Width"] = pygame_gui.elements.UITextEntryLine(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
             manager=self.manager,
             container=popup_window
-        ))
+        )
+
         current_y += button_height + margin
 
         height_label = pygame_gui.elements.UILabel(
@@ -340,14 +407,15 @@ class User_interface:
         )
         current_y += button_height + margin
 
-        self.UI_elements.append(pygame_gui.elements.UITextEntryLine(
+        self.UI_elements["Height"] = pygame_gui.elements.UITextEntryLine(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
             manager=self.manager,
             container=popup_window
-        ))
+        )
+
         current_y += button_height + margin
 
-        self.popup_submit_button = pygame_gui.elements.UIButton(
+        self.UI_elements["Room_Submit"] = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
             text="Submit",
             manager=self.manager,
@@ -372,7 +440,7 @@ class User_interface:
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
-    def load_new_images(self,room_num):
+    def load_new_plus_images(self,room_num):
         plus_img = pygame.image.load('./img/plus.png')
         plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
 
@@ -390,10 +458,16 @@ class User_interface:
                 return x, (y + adapted_height//2)-10
             case "B":
                 return x, (y - adapted_height//2)+10 
+    
+    def close_popup(self):
+        self.active_popup.kill()
+        self.active_popup = None
+
 ######################################################### MAIN LOOP ############################################################
+
     def main_loop(self):
         while self.running:
-            self.check_event()
+            self.event_handler()
             self.update_screen_size()
 
             keys = pygame.key.get_pressed()
