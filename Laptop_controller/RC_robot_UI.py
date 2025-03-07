@@ -220,8 +220,10 @@ class User_interface:
                 self.draw_image(room.sides[side].type + "_" + side + "_" + str(room.room_num), room.sides[side].pos[0], room.sides[side].pos[1])
 
     def draw_sensor(self):
-        sensor_img = pygame.image.load('./img/sensor.png')
-        sensor_img = pygame.transform.scale(sensor_img, (sensor_img.get_width() // 5, sensor_img.get_height() // 5))
+        room_origin = int(self.temp_origin[7])
+        side_origin = self.temp_origin[5]
+        self.rooms[room_origin].modify_side(side_origin, "./img/sensor.png", "sensor")
+        self.sensor.append(self.rooms[room_origin].sides[side_origin])
 
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
