@@ -200,30 +200,6 @@ class User_interface:
     def draw_add_room(self):
         if len(self.rooms) == 0:
             self.draw_image("plus_L_0", self.WIDTH//2, self.HEIGHT//2)
-        else :
-            for i in range(len(self.rooms)):
-                (width, height, x, y, side) = self.rooms[i]
-                adapted_width = int(width * (self.HEIGHT//6))
-                adapted_height = int(height * (self.HEIGHT//6))
-
-                plus_L_x = x - adapted_width//2
-                plus_L_y = y            
-
-                plus_R_x = x + adapted_width//2
-                plus_R_y = y
-                
-                plus_T_x = x 
-                plus_T_y = y + adapted_height//2
-                
-                plus_B_x = x 
-                plus_B_y = y - adapted_height//2
-                
-                self.load_new_images(i)
-
-                self.draw_image("plus_L_" + str(i), plus_L_x, plus_L_y)
-                self.draw_image("plus_R_" + str(i), plus_R_x, plus_R_y)
-                self.draw_image("plus_T_" + str(i), plus_T_x, plus_T_y)
-                self.draw_image("plus_B_" + str(i), plus_B_x, plus_B_y)
 
     def draw_image(self, name, x, y):
         plus_rect = self.image_dict.get(name).get_rect(center = (x, y))
@@ -239,8 +215,9 @@ class User_interface:
 
     def draw_room_sides(self, room):
         for side in ["L", "R", "T", "B"]:
-            self.load_image(room.room_num, room.sides[side], side)
-            self.draw_image(room.sides[side].type + "_" + side + "_" + str(room.room_num), room.sides[side].pos[0], room.sides[side].pos[1])
+            if type(room.sides[side]) != Room:
+                self.load_image(room.room_num, room.sides[side], side)
+                self.draw_image(room.sides[side].type + "_" + side + "_" + str(room.room_num), room.sides[side].pos[0], room.sides[side].pos[1])
 
     def draw_sensor(self):
         sensor_img = pygame.image.load('./img/sensor.png')
@@ -386,7 +363,7 @@ class User_interface:
         Content = Content.decode().replace("\r\n", "")
         self.message = int(Content)
 
-############################################################ HELPER FUNCTION #####################################################
+############################################################ HELPER FUNCTIONS #####################################################
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
@@ -421,6 +398,24 @@ class User_interface:
 
     def add_sides(self, room):
         sides = ["L", "R", "T", "B"]
+        room_origin = int(self.temp_origin[7])
+        side_origin = self.temp_origin[5]
+
+        if len(self.rooms) !=0:
+            if side_origin == "L":
+                sides.remove("R")
+                room.add_room("R", self.rooms[room_origin])
+            elif side_origin == "R":
+                sides.remove("L")
+                room.add_room("L", self.rooms[room_origin])
+            elif side_origin == "T":
+                sides.remove("B")
+                room.add_room("B", self.rooms[room_origin])
+            elif side_origin == "B":
+                sides.remove("T")
+                room.add_room("T", self.rooms[room_origin])
+
+            self.rooms[room_origin].add_room(side_origin, room)
 
         for side in sides:
             room.modify_side(side, "./img/plus.png", "plus")

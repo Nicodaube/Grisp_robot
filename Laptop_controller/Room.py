@@ -28,8 +28,6 @@ class Room:
         elif side == "B":
             side_x, side_y = self.pos[0], self.pos[1] - self.height//2
 
-
-
         return side_x, side_y
 
         
