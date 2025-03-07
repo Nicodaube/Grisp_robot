@@ -3,6 +3,7 @@ import pygame_gui
 import sys
 import numpy as np
 import serial
+from Room import Room
 
 class User_interface:
     WIDTH, HEIGHT = 1920, 1080
@@ -99,10 +100,13 @@ class User_interface:
                     width = self.UI_elements.get("Width").get_text()
                     height = self.UI_elements.get("Height").get_text()
                     if width != "" and height != "":
-                        x = self.rect_dict[self.temp_origin].center[0]
-                        y = self.rect_dict[self.temp_origin].center[1]
+                        screen_width, screen_height = self.compute_screen_size(float(width), float(height))
                         side = self.temp_origin[5]
-                        self.rooms.append((float(width), float(height), x, y, side))
+                        x, y = self.compute_pos_room(screen_width, screen_height, side, len(self.rooms))
+
+                        room = Room(screen_width, screen_height, x, y, len(self.rooms))
+                        self.add_sides(room)
+                        self.rooms.append(room)
                     self.close_popup()
                     self.temp_origin = None
         elif event.ui_element == self.UI_elements.get("Sensor"):
@@ -226,71 +230,17 @@ class User_interface:
         self.screen.blit(self.image_dict.get(name), self.image_dict.get(name).get_rect(center=plus_rect.center))
         self.rect_dict[name] = plus_rect
 
-    def draw_main_room(self, width, height, x, y, i):
-        adapted_width = int(width * (self.HEIGHT//4))
-        adapted_height = int(height * (self.HEIGHT//4))
-
-        room_rect = pygame.Rect(0, 0, adapted_width, adapted_height)
-        room_rect.center = (x, y)
+    def draw_room(self, room):
+        room_rect = pygame.Rect(0, 0, room.width, room.height)
+        room_rect.center = (room.pos[0], room.pos[1])
 
         pygame.draw.rect(self.screen, (0, 0, 0), room_rect, width=10)
-        self.draw_pluses(adapted_height, adapted_width, x, y, i, None)
+        self.draw_room_sides(room)
 
-    def draw_side_rooms(self, width, height, x, y, side, i):
-        adapted_width = int(width * (self.HEIGHT//4))
-        adapted_height = int(height * (self.HEIGHT//4))
-
-        adapted_x, adapted_y = self.compute_pos_room(x, y, adapted_height, adapted_width, side)
-
-        room_rect = pygame.Rect(0, 0, adapted_width, adapted_height)
-        room_rect.center = (adapted_x, adapted_y)
-
-        pygame.draw.rect(self.screen, (0, 0, 0), room_rect, width=10)
-        self.draw_pluses(adapted_height, adapted_width, adapted_x, adapted_y, i, side)
-
-    def draw_pluses(self, adapted_height, adapted_width, x, y, i, side):
-        plus_L_x = x - adapted_width//2
-        plus_L_y = y            
-
-        plus_R_x = x + adapted_width//2
-        plus_R_y = y
-        
-        plus_T_x = x 
-        plus_T_y = y + adapted_height//2
-        
-        plus_B_x = x 
-        plus_B_y = y - adapted_height//2
-
-        # Modify size because of border if not first room
-        if i != 0:
-            match side:
-                case "L":
-                    plus_L_x -= 10
-                    plus_R_x -= 10
-                    plus_T_x -= 10
-                    plus_B_x -= 10
-                case "R":
-                    plus_L_x += 10
-                    plus_R_x += 10
-                    plus_T_x += 10
-                    plus_B_x += 10
-                case "T":
-                    plus_L_y += 10
-                    plus_R_y += 10
-                    plus_T_y += 10
-                    plus_B_y += 10
-                case "B":
-                    plus_L_y -= 10
-                    plus_R_y -= 10
-                    plus_T_y -= 10
-                    plus_B_y -= 10
-
-        self.load_new_plus_images(i)
-
-        self.draw_image("plus_L_" + str(i), plus_L_x, plus_L_y)
-        self.draw_image("plus_R_" + str(i), plus_R_x, plus_R_y)
-        self.draw_image("plus_T_" + str(i), plus_T_x, plus_T_y)
-        self.draw_image("plus_B_" + str(i), plus_B_x, plus_B_y)
+    def draw_room_sides(self, room):
+        for side in ["L", "R", "T", "B"]:
+            self.load_image(room.room_num, room.sides[side], side)
+            self.draw_image(room.sides[side].type + "_" + side + "_" + str(room.room_num), room.sides[side].pos[0], room.sides[side].pos[1])
 
     def draw_sensor(self):
         sensor_img = pygame.image.load('./img/sensor.png')
@@ -440,28 +390,40 @@ class User_interface:
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
-    def load_new_plus_images(self,room_num):
-        plus_img = pygame.image.load('./img/plus.png')
-        plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
+    def load_image(self, room_num, object, side):
+        img = pygame.image.load(object.img)
+        img = pygame.transform.scale(img, (img.get_width() // 5, img.get_height() // 5))
 
-        for side in ["L", "R", "T", "B"]:
-            name = "plus_" + side + "_" + str(room_num)
-            self.image_dict[name] = plus_img
+        name = object.type + "_" + side + "_" + str(room_num)
+        self.image_dict[name] = img
 
-    def compute_pos_room(self, x, y, adapted_height, adapted_width, side):
-        match side :
-            case "L":
-                return (x - adapted_width//2)+10, y
-            case "R":
-                return (x + adapted_width//2)-10, y
-            case "T": 
-                return x, (y + adapted_height//2)-10
-            case "B":
-                return x, (y - adapted_height//2)+10 
+    def compute_pos_room(self, adapted_height, adapted_width, side, room_num):
+        x, y = self.rect_dict[self.temp_origin].center[0], self.rect_dict[self.temp_origin].center[1]
+        if room_num == 0 :
+         return x, y
+        else :
+            match side :
+                case "L":
+                    return (x - adapted_width//2)+10, y
+                case "R":
+                    return (x + adapted_width//2)-10, y
+                case "T": 
+                    return x, (y + adapted_height//2)-10
+                case "B":
+                    return x, (y - adapted_height//2)+10 
+    
+    def compute_screen_size(self, width, height):
+        return int(width * (self.HEIGHT//4)), int(height * (self.HEIGHT//4))
     
     def close_popup(self):
         self.active_popup.kill()
         self.active_popup = None
+
+    def add_sides(self, room):
+        sides = ["L", "R", "T", "B"]
+
+        for side in sides:
+            room.modify_side(side, "./img/plus.png", "plus")
 
 ######################################################### MAIN LOOP ############################################################
 
@@ -483,18 +445,13 @@ class User_interface:
 
             self.screen.fill((255, 255, 255))
 
-            for i in range(len(self.rooms)):
-                (width, height, x, y, side) = self.rooms[i]
-                if i == 0 :
-                    self.draw_main_room(width, height, x, y, i)
-                else :
-                    self.draw_side_rooms(width, height, x, y, side, i)
+            for room in self.rooms:
+                self.draw_room(room)
 
             self.draw_move_ctrl()
             if len(self.rooms) == 0 :
                 self.draw_add_room()
             self.draw_string()
-
 
 
             self.manager.update(self.clock.tick(60)/1000)
