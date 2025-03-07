@@ -218,12 +218,21 @@ class User_interface:
             if type(room.sides[side]) != Room:
                 self.load_image(room.room_num, room.sides[side], side)
                 self.draw_image(room.sides[side].type + "_" + side + "_" + str(room.room_num), room.sides[side].pos[0], room.sides[side].pos[1])
+            else:
+                x, y = room.compute_pos(side)
+                self.draw_door(x, y)
 
     def draw_sensor(self):
         room_origin = int(self.temp_origin[7])
         side_origin = self.temp_origin[5]
         self.rooms[room_origin].modify_side(side_origin, "./img/sensor.png", "sensor")
         self.sensor.append(self.rooms[room_origin].sides[side_origin])
+
+    def draw_door(self, x, y):
+        width, height = self.compute_screen_size(0.3, 0.3)
+        door_rect = pygame.Rect(0, 0, width, height)
+        door_rect.center = (x, y)
+        pygame.draw.rect(self.screen, (255, 255, 255), door_rect)
 
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -392,7 +401,7 @@ class User_interface:
                     return x, (y - adapted_height//2)+10 
     
     def compute_screen_size(self, width, height):
-        return int(width * (self.HEIGHT//4)), int(height * (self.HEIGHT//4))
+        return int(width * (self.HEIGHT//3.6)), int(height * (self.HEIGHT//3.6))
     
     def close_popup(self):
         self.active_popup.kill()
