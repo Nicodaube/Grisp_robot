@@ -27,13 +27,19 @@ wifi_setup() ->
             {_, Parameters} = lists:nth(3, List),
             {_, IpTuple} = lists:nth(4, Parameters),
 
-            io:format("inet return: ~p~n", [IpTuple]);
+            send_udp_message({172,20,10,8}, 5000, inet:ntoa(IpTuple));
+            
         {error, Reason} ->
             io:format("WiFi setup failed: ~p~n", [Reason]),
             [grisp_led:flash(L, red, 100) || L <- [1, 2]]
     end,
     ok.
 
+send_udp_message(Host, Port, Message) ->
+    {ok, Socket} = gen_udp:open(9000, [binary, {active, false}]),
+    gen_udp:send(Socket, Host, Port, Message),
+    io:format("[SENSOR] Sent IP : ~p to ~p:~p~n", [Message, Host, Port]),
+    gen_udp:close(Socket).
 
 % @private
 start(_Type, _Args) -> 
