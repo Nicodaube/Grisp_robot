@@ -28,7 +28,7 @@ wifi_setup() ->
             {_, IpTuple} = lists:nth(4, Parameters),
             io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
 
-            send_udp_message({192,168,136,1}, 5000, inet:ntoa(IpTuple)),
+            send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
             
             loop();
             
@@ -39,13 +39,18 @@ wifi_setup() ->
     ok.
 
 loop() ->
-    Distance = pmod_maxsonar:get(),
-    String = integer_to_list(Distance),
-    io:format("[SENSOR] Calculated Distance : ~p ~n",[String]),
+    Dist_inch = pmod_maxsonar:get(),
+    Dist_cm = Dist_inch * 2.54,
+    R_Dist_cm = round(Dist_cm, 3),
+    String = float_to_list(R_Dist_cm),
+    io:format("[SENSOR] Calculated Distance : ~p ~n",[R_Dist_cm]),
     timer:sleep(2000),
-    send_udp_message({192,168,136,1}, 5000, String),
+    send_udp_message({172,20,10,8}, 5000, "Distance " ++ String),
     loop().
 
+round(Number, Precision) ->
+    Power = math:pow(10, Precision),
+    round(Number * Power) / Power.
 
 send_udp_message(Host, Port, Message) ->
     {ok, Socket} = gen_udp:open(9000, [binary, {active, false}]),
