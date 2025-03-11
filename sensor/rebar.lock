@@ -1,5 +1,17 @@
 {"1.2.0",
-[{<<"grisp">>,{pkg,<<"grisp">>,<<"2.8.0">>},0},
+[{<<"epmd">>,
+  {git,"https://github.com/erlang/epmd",
+       {ref,"4d1a595b9d5c32fc0e55f462da381de62de23bf0"}},
+  0},
+ {<<"grisp">>,{pkg,<<"grisp">>,<<"2.8.0">>},0},
+ {<<"hera">>,
+  {git,"https://github.com/Nicodaube/hera",
+       {ref,"483a855bbc397588c9fd388892ff53bd4576225d"}},
+  0},
+ {<<"hera_synchronization">>,
+  {git,"https://github.com/sebkm/hera_synchronization",
+       {ref,"d5344e7d916edff1d58ce0c5357386d4fc6b82e7"}},
+  0},
  {<<"mapz">>,{pkg,<<"mapz">>,<<"2.4.0">>},1}]}.
 [
 {pkg_hash,[
