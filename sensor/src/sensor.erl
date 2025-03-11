@@ -41,7 +41,7 @@ wifi_setup() ->
 loop() ->
     Dist_inch = pmod_maxsonar:get(),
     Dist_cm = Dist_inch * 2.54,
-    R_Dist_cm = round(Dist_cm, 3),
+    R_Dist_cm = round(Dist_cm, 4),
     String = float_to_list(R_Dist_cm),
     io:format("[SENSOR] Calculated Distance : ~p ~n",[R_Dist_cm]),
     timer:sleep(2000),
