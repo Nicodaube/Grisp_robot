@@ -17,7 +17,7 @@
 #define MOTOR_C_DIR_PIN 25
 
 #define v_max  100 // speed max, in cm/s
-#define microsteps 16
+#define microsteps 4
 #define steps 400
 #define diameter 7 // cm
 #define lever_ratio 0.09090909090909090909090909090909 //    12/132
