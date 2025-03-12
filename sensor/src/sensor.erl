@@ -45,7 +45,7 @@ loop() ->
     String = float_to_list(R_Dist_cm),
     io:format("[SENSOR] Calculated Distance : ~p ~n",[R_Dist_cm]),
     timer:sleep(2000),
-    send_udp_message({172,20,10,8}, 5000, "Distance " ++ String),
+    send_udp_message({172,20,10,8}, 5000, "Dst " ++ inet:ntoa(IpTuple) ++ " " ++ String),
     loop().
 
 round(Number, Precision) ->
