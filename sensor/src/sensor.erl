@@ -11,7 +11,6 @@
 start_sensor() ->
     %timer:sleep(5000),
     
-    %io:format("[SENSOR] WiFi setup complete~n"),
     %hera:start_measure(sonar_sensor, []),
     ok.
 
@@ -25,6 +24,8 @@ wifi_setup() ->
             % Parse Ip from inet return
             {_, Parameters} = lists:nth(3, List),
             {_, IpTuple} = lists:nth(4, Parameters),
+
+            % Check if the wifi setup has been done correctly
             case IpTuple of 
                 {172,_,_,_} -> 
                     io:format("[SENSOR] WiFi setup done~n"),
@@ -43,6 +44,7 @@ wifi_setup() ->
                     
                     loop();
                 _ ->
+                    % error case
                     io:format("WiFi setup failed:~n"),
                     [grisp_led:flash(L, red, 1000) || L <- [1, 2]]
                 end
@@ -54,8 +56,9 @@ loop() ->
     Dist_cm = Dist_inch * 2.54,
     R_Dist_cm = round(Dist_cm, 4),
     String = float_to_list(R_Dist_cm),
+
     io:format("[SENSOR] Calculated Distance : ~p ~n",[R_Dist_cm]),
-    timer:sleep(2000),
+    timer:sleep(500),
     send_udp_message({172,20,10,8}, 5000, "Distance " ++ String),
     loop().
 
