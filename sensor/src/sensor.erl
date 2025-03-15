@@ -20,21 +20,32 @@ wifi_setup() ->
     timer:sleep(20000),
     case inet:getifaddrs() of
         {ok, List} ->
-            io:format("[SENSOR] WiFi setup done~n"),
-            [grisp_led:color(L, green) || L <- [1, 2]],
+            
 
             % Parse Ip from inet return
             {_, Parameters} = lists:nth(3, List),
             {_, IpTuple} = lists:nth(4, Parameters),
-            io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
+            case IpTuple of 
+                {172,_,_,_} -> 
+                    io:format("[SENSOR] WiFi setup done~n"),
+                    [grisp_led:color(L, green) || L <- [1, 2]],
+                    io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
 
-            send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
-            
-            loop();
-            
-        {error, Reason} ->
-            io:format("WiFi setup failed: ~p~n", [Reason]),
-            [grisp_led:flash(L, red, 100) || L <- [1, 2]]
+                    send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
+                    
+                    loop();
+                {192,168,_,_} -> 
+                    io:format("[SENSOR] WiFi setup done~n"),
+                    [grisp_led:color(L, green) || L <- [1, 2]],
+                    io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
+
+                    send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
+                    
+                    loop();
+                _ ->
+                    io:format("WiFi setup failed:~n"),
+                    [grisp_led:flash(L, red, 1000) || L <- [1, 2]]
+                end
     end,
     ok.
 
@@ -45,7 +56,7 @@ loop() ->
     String = float_to_list(R_Dist_cm),
     io:format("[SENSOR] Calculated Distance : ~p ~n",[R_Dist_cm]),
     timer:sleep(2000),
-    send_udp_message({172,20,10,8}, 5000, "Dst " ++ inet:ntoa(IpTuple) ++ " " ++ String),
+    send_udp_message({172,20,10,8}, 5000, "Distance " ++ String),
     loop().
 
 round(Number, Precision) ->
