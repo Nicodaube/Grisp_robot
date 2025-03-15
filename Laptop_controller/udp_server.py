@@ -12,10 +12,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
     print(f"Listening for UDP packets on {HOST}:{PORT}")
 
     while True:
-        data, addr = server_socket.recvfrom(1024)  # Receive UDP packet
+        data, addr = server_socket.recvfrom(1024)
         data = data.decode()
-        print(f"Received from {addr}: {data}")
 
-        if data[:8] == "SensorIP":
+        if data[:5] == "Hello":
             with open("./sensors_data/sensors_ip.txt", "a") as ip_file :
-                ip_file.write(data[9:])
+                ip_file.write(addr)
