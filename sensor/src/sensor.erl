@@ -31,8 +31,9 @@ wifi_setup() ->
                     io:format("[SENSOR] WiFi setup done~n"),
                     [grisp_led:color(L, green) || L <- [1, 2]],
                     io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
-
-                    send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
+                    {ok, Id} = get_grisp_id(),
+                    
+                    send_udp_message({172,20,10,8}, 5000, "Hello from " ++ Id),
                     
                     loop();
                 {192,168,_,_} -> 
@@ -40,7 +41,9 @@ wifi_setup() ->
                     [grisp_led:color(L, green) || L <- [1, 2]],
                     io:format("[SENSOR] Ip adress is : ~p~n", [IpTuple]),
 
-                    send_udp_message({172,20,10,8}, 5000, "SensorIP " ++ inet:ntoa(IpTuple)),
+                    {ok, Id} = get_grisp_id(),
+                    
+                    send_udp_message({172,20,10,8}, 5000, "Hello from " ++ Id),
                     
                     loop();
                 _ ->
@@ -50,6 +53,17 @@ wifi_setup() ->
                 end
     end,
     ok.
+
+
+get_grisp_id() ->
+    JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
+    JMP2 = grisp_gpio:open(jumper_2, #{mode => input}) * 2,
+    JMP3 = (grisp_gpio:open(jumper_3, #{mode => input}) * 2) * 2,
+    JMP4 = ((grisp_gpio:open(jumper_4, #{mode => input}) * 2) * 2) * 2,
+    JMP5 = ((grisp_gpio:open(jumper_5, #{mode => input}) * 2) * 2) * 2,
+
+    SUM = JMP1 + JMP2 + JMP3 + JMP4 + JMP5,
+    {ok, SUM}.
 
 loop() ->
     Dist_inch = pmod_maxsonar:get(),
