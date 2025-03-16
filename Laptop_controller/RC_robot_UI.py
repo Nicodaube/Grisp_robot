@@ -3,6 +3,7 @@ import pygame_gui
 import sys
 import numpy as np
 import serial
+from Server import Server
 from Room import Room
 
 class User_interface:
@@ -40,6 +41,8 @@ class User_interface:
         self.manager = pygame_gui.UIManager((self.WIDTH, self.HEIGHT))
         self.clock = pygame.time.Clock()
         self.clock.tick(200)
+
+        self.server = Server()
 
         self.load_figures()
 
