@@ -7,14 +7,13 @@ class Server:
     PORT = 5000
     buffer = []
     sensors_ip = {}
+    sensor_data = {}
 
     def __init__(self):
-        #Create or clear the file for sensors ip
-        file = open("./sensors_data/sensors_ip.txt", "w")
-        file.close() 
+        self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
+        self.sendServer = threading.Thread(target=self.snd_server, daemon=True)
 
-        self.rcvServer = threading.Thread(target=self.rcv_server(), daemon=True)
-        self.sendServer = threading.Thread(target=self.snd_server(), daemon=True)
+        self.rcvServer.start()
 
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
@@ -26,14 +25,19 @@ class Server:
                 data = data.decode()
 
                 if data[:5] == "Hello":
-                    self.sensors_ip[data[7:]] = addr
+                    id = int(data[11:])
+                    self.sensors_ip[id] = addr
+                    self.sensor_data[addr[0]] = 0
+                elif data[:8] == "Distance":
+                    self.sensor_data[addr[0]] = float(data[9:])
 
     def snd_server(self):
         pass
 
-    def get_Sensors(self):
-        return self.sensors_ip
+    def get_sensors(self):
+        return self.sensors_ip.keys()
 
 
 
-
+if __name__ == '__main__' :
+    serv = Server()

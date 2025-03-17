@@ -86,9 +86,9 @@ class User_interface:
 
     def event_click_on_plus(self, event):
         if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
-                    self.in_popup = True
-                    self.temp_origin = "plus_L_0"
-                    self.create_room_popup()
+            self.in_popup = True
+            self.temp_origin = "plus_L_0"
+            self.create_room_popup()
 
         for room in range(len(self.rooms)):
             for side in ["L", "R", "T", "B"]:
@@ -100,26 +100,36 @@ class User_interface:
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements["Room_Submit"]:
-                    width = self.UI_elements.get("Width").get_text()
-                    height = self.UI_elements.get("Height").get_text()
-                    if width != "" and height != "":
-                        screen_width, screen_height = self.compute_screen_size(float(width), float(height))
-                        side = self.temp_origin[5]
-                        x, y = self.compute_pos_room(screen_width, screen_height, side, len(self.rooms))
+            width = self.UI_elements.get("Width").get_text()
+            height = self.UI_elements.get("Height").get_text()
+            if width != "" and height != "":
+                try :
+                    screen_width, screen_height = self.compute_screen_size(float(width), float(height))
+                    side = self.temp_origin[5]
+                    x, y = self.compute_pos_room(screen_width, screen_height, side, len(self.rooms))
 
-                        room = Room(screen_width, screen_height, x, y, len(self.rooms))
-                        self.add_sides(room)
-                        self.rooms.append(room)
-                    self.close_popup()
-                    self.temp_origin = None
+                    room = Room(screen_width, screen_height, x, y, len(self.rooms))
+                    self.add_sides(room)
+                    self.rooms.append(room)
+                except :
+                    print("[ERROR] : Problem with width and height values")
+            self.close_popup()
+            self.temp_origin = None
         elif event.ui_element == self.UI_elements.get("Sensor"):
             self.close_popup()
-            self.draw_sensor()
-            self.temp_origin = None
+            self.create_sensor_popup()
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
-                    
+        
+        #Check sensor choice 
+        sensors = self.server.get_sensors()
+        for id in sensors:
+            if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
+                self.close_popup()
+                self.draw_sensor()
+                self.temp_origin = None
+                                    
         self.in_popup = False
 
 ######################################################### KEYBOARD FUNCTIONS #################################################
@@ -362,6 +372,58 @@ class User_interface:
             manager=self.manager,
             container=popup_window
         )
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
+    def create_sensor_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 3
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Retrieve sensors Ids
+        sensors = self.server.get_sensors()
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Sensor Choice'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Choose a sensor:",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        for Id in sensors :
+            self.UI_elements["Sensor choice " + str(Id)] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+                text=str(Id),
+                manager=self.manager,
+                container=popup_window
+            )
+
+            current_y += button_height + margin
 
         self.manager.draw_ui(self.screen)
         pygame.display.update()
