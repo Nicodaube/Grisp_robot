@@ -8,6 +8,7 @@ from Room import Room
 
 class User_interface:
     WIDTH, HEIGHT = 1920, 1080
+    RESIZE = 2
     running = True
     message = 0
     run = True
@@ -21,6 +22,7 @@ class User_interface:
     active_popup = None
     UI_elements = {}
     temp_origin = None
+    room_grid = ((0,0),(0,0))
     
     x = 0
     string = ""
@@ -111,6 +113,7 @@ class User_interface:
                     room = Room(screen_width, screen_height, x, y, len(self.rooms))
                     self.add_sides(room)
                     self.rooms.append(room)
+                    self.get_new_grid()
                 except :
                     print("[ERROR] : Problem with width and height values")
             self.close_popup()
@@ -127,6 +130,10 @@ class User_interface:
         for id in sensors:
             if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
                 self.close_popup()
+                
+                absolute_position = self.get_sensor_pos()
+                print(absolute_position)
+                #self.server.send()
                 self.draw_sensor()
                 self.temp_origin = None
                                     
@@ -246,6 +253,16 @@ class User_interface:
         door_rect = pygame.Rect(0, 0, width, height)
         door_rect.center = (x, y)
         pygame.draw.rect(self.screen, (255, 255, 255), door_rect)
+
+    def draw_grid(self):
+        RED = (255, 0, 0)
+
+        point1 = (self.room_grid[0][0], self.room_grid[1][0])
+        point2 = (self.room_grid[0][1], self.room_grid[1][0])
+        point3 = (self.room_grid[0][1], self.room_grid[1][1])
+
+        pygame.draw.line(self.screen, RED, point1, point2, width=10)
+        pygame.draw.line(self.screen, RED, point2, point3, width=10)
 
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -466,7 +483,7 @@ class User_interface:
                     return x, (y - adapted_height//2)+10 
     
     def compute_screen_size(self, width, height):
-        return int(width * (self.HEIGHT//3.6)), int(height * (self.HEIGHT//3.6))
+        return int(width * (self.HEIGHT//self.RESIZE)), int(height * (self.HEIGHT//self.RESIZE))
     
     def close_popup(self):
         self.active_popup.kill()
@@ -496,6 +513,53 @@ class User_interface:
         for side in sides:
             room.modify_side(side, "./img/plus.png", "plus")
 
+    def get_new_grid(self):
+        leftmost_room = None
+        rightmost_room = None
+        
+        upmost_room = None
+        downmost_room = None
+
+        x_min = self.WIDTH+1
+        x_max = 0
+        y_min = self.HEIGHT+1
+        y_max = 0
+        for room in self.rooms:
+
+            if room.pos[0] < x_min:                
+                x_min = room.pos[0]
+                leftmost_room = room
+            if room.pos[0] > x_max:                
+                x_max = room.pos[0]
+                rightmost_room = room
+
+            if room.pos[1] < y_min:
+                y_min = room.pos[1]
+                upmost_room = room
+            if room.pos[1] > y_max:
+                y_max = room.pos[1]
+                downmost_room = room
+        
+        x_min -= leftmost_room.width//2
+        x_max += rightmost_room.width//2
+
+        y_min -= upmost_room.height//2
+        y_max += downmost_room.height//2
+
+        self.room_grid = ((x_min, x_max), (y_min, y_max))
+
+    def get_sensor_pos(self):
+        room = int(self.temp_origin[-1])
+        side = self.temp_origin[-3]
+
+        room = self.rooms[room]
+
+        x,y = room.compute_pos(side)
+
+        grid_x = round((x - self.room_grid[0][0])/(self.WIDTH/self.RESIZE), 2)
+        grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
+
+        return grid_x, grid_y
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
@@ -522,8 +586,9 @@ class User_interface:
             self.draw_move_ctrl()
             if len(self.rooms) == 0 :
                 self.draw_add_room()
+            else :
+                self.draw_grid()
             self.draw_string()
-
 
             self.manager.update(self.clock.tick(60)/1000)
             self.manager.draw_ui(self.screen)
