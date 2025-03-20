@@ -3,10 +3,12 @@ import pygame_gui
 import sys
 import numpy as np
 import serial
+from Server import Server
 from Room import Room
 
 class User_interface:
     WIDTH, HEIGHT = 1920, 1080
+    RESIZE = 2
     running = True
     message = 0
     run = True
@@ -20,6 +22,7 @@ class User_interface:
     active_popup = None
     UI_elements = {}
     temp_origin = None
+    room_grid = ((0,0),(0,0))
     
     x = 0
     string = ""
@@ -40,6 +43,8 @@ class User_interface:
         self.manager = pygame_gui.UIManager((self.WIDTH, self.HEIGHT))
         self.clock = pygame.time.Clock()
         self.clock.tick(200)
+
+        self.server = Server()
 
         self.load_figures()
 
@@ -83,9 +88,9 @@ class User_interface:
 
     def event_click_on_plus(self, event):
         if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
-                    self.in_popup = True
-                    self.temp_origin = "plus_L_0"
-                    self.create_room_popup()
+            self.in_popup = True
+            self.temp_origin = "plus_L_0"
+            self.create_room_popup()
 
         for room in range(len(self.rooms)):
             for side in ["L", "R", "T", "B"]:
@@ -97,35 +102,49 @@ class User_interface:
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements["Room_Submit"]:
-                    width = self.UI_elements.get("Width").get_text()
-                    height = self.UI_elements.get("Height").get_text()
-                    if width != "" and height != "":
-                        screen_width, screen_height = self.compute_screen_size(float(width), float(height))
-                        side = self.temp_origin[5]
-                        x, y = self.compute_pos_room(screen_width, screen_height, side, len(self.rooms))
+            width = self.UI_elements.get("Width").get_text()
+            height = self.UI_elements.get("Height").get_text()
+            if width != "" and height != "":
+                try :
+                    screen_width, screen_height = self.compute_screen_size(float(width), float(height))
+                    side = self.temp_origin[5]
+                    x, y = self.compute_pos_room(screen_width, screen_height, side, len(self.rooms))
 
-                        room = Room(screen_width, screen_height, x, y, len(self.rooms))
-                        self.add_sides(room)
-                        self.rooms.append(room)
-                    self.close_popup()
-                    self.temp_origin = None
+                    room = Room(screen_width, screen_height, x, y, len(self.rooms))
+                    self.add_sides(room)
+                    self.rooms.append(room)
+                    self.get_new_grid()
+                except :
+                    print("[ERROR] : Problem with width and height values")
+            self.close_popup()
+            self.temp_origin = None
         elif event.ui_element == self.UI_elements.get("Sensor"):
             self.close_popup()
-            self.draw_sensor()
-            self.temp_origin = None
+            self.create_sensor_popup()
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
-                    
+        
+        #Check sensor choice 
+        sensors = self.server.get_sensors()
+        for id in sensors:
+            if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
+                self.close_popup()
+                
+                absolute_position = self.get_sensor_pos()
+                self.server.send(str(absolute_position))
+                self.draw_sensor()
+                self.temp_origin = None
+                                    
         self.in_popup = False
 
 ######################################################### KEYBOARD FUNCTIONS #################################################
 
     def check_keys_movement(self, keys):
         if keys[pygame.K_z] or keys[pygame.K_UP]:
-            self.x += 1
-        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
             self.x += -1
+        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            self.x += 1
         elif keys[pygame.K_q] or keys[pygame.K_LEFT]:
             self.x += 1j
         elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
@@ -181,7 +200,7 @@ class User_interface:
         elif abs(self.x) == 0:
             self.draw_image("circle", self.WIDTH //2, 100)
         else:
-            angle = np.angle(self.x, deg=True)
+            angle = np.angle(-1*self.x, deg=True)
             rotated_arrow = pygame.transform.rotate(self.image_dict.get("arrow"), angle)
             rotated_rect = rotated_arrow.get_rect(center = (self.WIDTH//2, 100))
             self.screen.blit(rotated_arrow, rotated_rect.topleft)
@@ -233,6 +252,16 @@ class User_interface:
         door_rect = pygame.Rect(0, 0, width, height)
         door_rect.center = (x, y)
         pygame.draw.rect(self.screen, (255, 255, 255), door_rect)
+
+    def draw_grid(self):
+        RED = (255, 0, 0)
+
+        point1 = (self.room_grid[0][0], self.room_grid[1][0])
+        point2 = (self.room_grid[0][1], self.room_grid[1][0])
+        point3 = (self.room_grid[0][1], self.room_grid[1][1])
+
+        pygame.draw.line(self.screen, RED, point1, point2, width=10)
+        pygame.draw.line(self.screen, RED, point2, point3, width=10)
 
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -363,6 +392,58 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
+    def create_sensor_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 3
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Retrieve sensors Ids
+        sensors = self.server.get_sensors()
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Sensor Choice'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Choose a sensor:",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        for Id in sensors :
+            self.UI_elements["Sensor choice " + str(Id)] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+                text=str(Id),
+                manager=self.manager,
+                container=popup_window
+            )
+
+            current_y += button_height + margin
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
 ######################################################### SERIAL COMM FUNCTIONS #################################################
 
     def serial_comm(self):
@@ -401,7 +482,7 @@ class User_interface:
                     return x, (y - adapted_height//2)+10 
     
     def compute_screen_size(self, width, height):
-        return int(width * (self.HEIGHT//3.6)), int(height * (self.HEIGHT//3.6))
+        return int(width * (self.HEIGHT//self.RESIZE)), int(height * (self.HEIGHT//self.RESIZE))
     
     def close_popup(self):
         self.active_popup.kill()
@@ -431,6 +512,53 @@ class User_interface:
         for side in sides:
             room.modify_side(side, "./img/plus.png", "plus")
 
+    def get_new_grid(self):
+        leftmost_room = None
+        rightmost_room = None
+        
+        upmost_room = None
+        downmost_room = None
+
+        x_min = self.WIDTH+1
+        x_max = 0
+        y_min = self.HEIGHT+1
+        y_max = 0
+        for room in self.rooms:
+
+            if room.pos[0] < x_min:                
+                x_min = room.pos[0]
+                leftmost_room = room
+            if room.pos[0] > x_max:                
+                x_max = room.pos[0]
+                rightmost_room = room
+
+            if room.pos[1] < y_min:
+                y_min = room.pos[1]
+                upmost_room = room
+            if room.pos[1] > y_max:
+                y_max = room.pos[1]
+                downmost_room = room
+        
+        x_min -= leftmost_room.width//2
+        x_max += rightmost_room.width//2
+
+        y_min -= upmost_room.height//2
+        y_max += downmost_room.height//2
+
+        self.room_grid = ((x_min, x_max), (y_min, y_max))
+
+    def get_sensor_pos(self):
+        room = int(self.temp_origin[-1])
+        side = self.temp_origin[-3]
+
+        room = self.rooms[room]
+
+        x,y = room.compute_pos(side)
+
+        grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
+        grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
+
+        return grid_x, grid_y
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
@@ -458,7 +586,6 @@ class User_interface:
             if len(self.rooms) == 0 :
                 self.draw_add_room()
             self.draw_string()
-
 
             self.manager.update(self.clock.tick(60)/1000)
             self.manager.draw_ui(self.screen)
