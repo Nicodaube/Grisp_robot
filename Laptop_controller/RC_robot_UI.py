@@ -8,7 +8,7 @@ from Room import Room
 
 class User_interface:
     WIDTH, HEIGHT = 1920, 1080
-    RESIZE = 4
+    RESIZE = 2
     running = True
     message = 0
     run = True
@@ -132,8 +132,7 @@ class User_interface:
                 self.close_popup()
                 
                 absolute_position = self.get_sensor_pos()
-                print(absolute_position)
-                #self.server.send()
+                self.server.send(str(absolute_position))
                 self.draw_sensor()
                 self.temp_origin = None
                                     
@@ -586,8 +585,6 @@ class User_interface:
             self.draw_move_ctrl()
             if len(self.rooms) == 0 :
                 self.draw_add_room()
-            else :
-                self.draw_grid()
             self.draw_string()
 
             self.manager.update(self.clock.tick(60)/1000)
