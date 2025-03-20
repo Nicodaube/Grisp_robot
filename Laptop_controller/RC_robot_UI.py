@@ -8,7 +8,7 @@ from Room import Room
 
 class User_interface:
     WIDTH, HEIGHT = 1920, 1080
-    RESIZE = 2
+    RESIZE = 4
     running = True
     message = 0
     run = True
@@ -556,7 +556,7 @@ class User_interface:
 
         x,y = room.compute_pos(side)
 
-        grid_x = round((x - self.room_grid[0][0])/(self.WIDTH/self.RESIZE), 2)
+        grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
         return grid_x, grid_y
