@@ -34,7 +34,7 @@ start(_Type, _Args) ->
 
     pmod_nav:config(acc, #{odr_g => {hz,238}}), % Configure PMOD Nav accelerometer with output data rate of 238 Hz
     numerl:init(), % Initialize numerl library
-    Pid = spawn(balancing_robot, start_robot, []), % Spawn a process to start the robot
+    _ = spawn(balancing_robot, start_robot, []), % Spawn a process to start the robot
     {ok, Supervisor}. % Return ok and the supervisor
 
 % Application stop callback
