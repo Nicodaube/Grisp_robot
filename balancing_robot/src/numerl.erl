@@ -4,21 +4,41 @@
 
 %Matrices are represented as such:
 %-record(matrix, {n_rows, n_cols, bin}).
+%% @doc
+%% Initializes the NIF (Native Implemented Function) module.
+%% This function loads the NIF library associated with the current module.
+%% The `atom_to_list(?MODULE)` converts the module name to a string,
+%% which is then used to load the corresponding NIF library.
+%% 
+%% @spec init() -> ok
 
 init()->
     ok  = erlang:load_nif(atom_to_list(?MODULE), 0).
 
-%Creates a random matrix.
-rnd_matrix(N)->
-    L = [[rand:uniform(20) || _ <- lists:seq(1,N) ] || _ <- lists:seq(1,N)],
+%%Creates a random matrix.
+%% @doc
+%% Generates a random NxN matrix with elements ranging from 1 to 20.
+%% @spec rnd_matrix(integer()) -> matrix()
+rnd_matrix(N) ->
+    L = [[rand:uniform(20) || _ <- lists:seq(1, N)] || _ <- lists:seq(1, N)],
     matrix(L).
 
-%Combine multiple functions.
+% @doc
+% Evaluates a list of expressions [LeftOperand, Operator, RightOperand | Tail].
+% Applies the operator to the left and right operands using a dynamically created function.
+% Recursively evaluates the result with the remaining tail of the list.
+% Returns the final result if the list contains only one element.
+%
+% @param ExprList A list of expressions.
+% @return The result of evaluating the entire list.
 eval([L,O,R|T])->
+    % Create a fun (anonymous function) that references the function numerl:O/2
     F = fun numerl:O/2,
     eval([F(L,R) |T]);
 eval([Res])->
     Res.
+
+%% The next functions are placeholders in case NIF is not loaded and will return `nif_not_loaded`.
 
 %%Creates a matrix.
 %List: List of doubles, of length N.
@@ -26,7 +46,8 @@ eval([Res])->
 matrix(_) ->
     nif_not_loaded.
 
-%%Returns the Nth value contained within Matrix.
+%% Retrieves the Nth element from the given matrix.
+%% @spec at(matrix(), integer()) -> any()
 at(_Matrix,_Nth)->
     nif_not_loaded.
 
@@ -67,6 +88,10 @@ sub(_, _) ->
     nif_not_loaded.
 
 
+%% @doc
+%% Multiplies matrix A by B. If B is a number, it calls the function '*_num'(A, B).
+%% If B is a matrix, it calls the function '*_matrix'(A, B).
+%% @spec mult(matrix() | number(), matrix() | number()) -> matrix().
 %% Matrix multiplication.
 mult(A,B) when is_number(B) -> '*_num'(A,B);
 mult(A,B) -> '*_matrix'(A,B).
@@ -80,7 +105,6 @@ mult(A,B) -> '*_matrix'(A,B).
 %Matrix division by a number
 divide(_,_)->
     nif_not_loaded.
-
 
 %% build a null matrix of size NxM
 zeros(_, _) ->
