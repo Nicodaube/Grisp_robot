@@ -143,9 +143,9 @@ class User_interface:
 
     def check_keys_movement(self, keys):
         if keys[pygame.K_z] or keys[pygame.K_UP]:
-            self.x += 1
-        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
             self.x += -1
+        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            self.x += 1
         elif keys[pygame.K_q] or keys[pygame.K_LEFT]:
             self.x += 1j
         elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
@@ -201,7 +201,7 @@ class User_interface:
         elif abs(self.x) == 0:
             self.draw_image("circle", self.WIDTH //2, 100)
         else:
-            angle = np.angle(self.x, deg=True)
+            angle = np.angle(-1*self.x, deg=True)
             rotated_arrow = pygame.transform.rotate(self.image_dict.get("arrow"), angle)
             rotated_rect = rotated_arrow.get_rect(center = (self.WIDTH//2, 100))
             self.screen.blit(rotated_arrow, rotated_rect.topleft)
