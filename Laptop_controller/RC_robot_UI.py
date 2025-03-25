@@ -131,8 +131,8 @@ class User_interface:
             if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
                 self.close_popup()
                 
-                absolute_position = self.get_sensor_pos()
-                self.server.send(str(absolute_position))
+                room, x, y = self.get_sensor_pos()
+                self.server.send(str((room, x, y)))
                 self.draw_sensor()
                 self.temp_origin = None
                                     
@@ -558,7 +558,7 @@ class User_interface:
         grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
-        return grid_x, grid_y
+        return int(self.temp_origin[-1]), grid_x, grid_y
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
