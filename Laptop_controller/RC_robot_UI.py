@@ -5,6 +5,8 @@ import numpy as np
 import serial
 from Server import Server
 from Room import Room
+from pathlib import Path
+import SaveParser
 
 class User_interface:
 
@@ -44,6 +46,9 @@ class User_interface:
     release_enter = True
     release_t = True
     release_tab = True
+
+    # Saved Files
+    saved_files = []
     
     def __init__(self, trajectory):
 
@@ -128,6 +133,14 @@ class User_interface:
             self.is_trajectory_started = True
             self.timer = pygame.time.get_ticks()/1000
 
+        elif self.is_click_image("save", event):
+            self.in_popup = True
+            self.create_save_popup()
+
+        elif self.is_click_image("load", event):
+            self.in_popup = True
+            self.create_load_popup()
+
         for room in range(len(self.rooms)):
             for side in ["L", "R", "T", "B"]:
                 name = "plus_" + side + "_" + str(room)
@@ -137,7 +150,7 @@ class User_interface:
                     self.create_choice_popup()
 
     def event_interact_popup(self, event):
-        if event.ui_element == self.UI_elements["Room_Submit"]:
+        if event.ui_element == self.UI_elements.get("Room_Submit"):
             width = self.UI_elements.get("Width").get_text()
             height = self.UI_elements.get("Height").get_text()
             if width != "" and height != "":
@@ -154,6 +167,10 @@ class User_interface:
                     print("[ERROR] : Problem with width and height values")
             self.close_popup()
             self.temp_origin = None
+        elif event.ui_element == self.UI_elements.get("Save_Submit"):
+            filename = self.UI_elements.get("Filename").get_text()
+            self.create_save_file(filename)
+            self.close_popup()
         elif event.ui_element == self.UI_elements.get("Sensor"):
             self.close_popup()
             self.create_sensor_popup()
@@ -171,7 +188,13 @@ class User_interface:
                 self.server.send(str((room, x, y)))
                 self.draw_sensor()
                 self.temp_origin = None
-                                    
+
+        #File loader choice
+        for filename in self.saved_files:
+            if event.ui_element == self.UI_elements.get("SavedFile" + filename[:-4]) :
+                self.rooms = SaveParser.parse(filename, self.HEIGHT, self.RESIZE)    
+                self.close_popup()
+                                            
         self.in_popup = False
 
 ######################################################### KEYBOARD FUNCTIONS #################################################
@@ -314,7 +337,9 @@ class User_interface:
             self.draw_image("start", self.WIDTH-200, 100)
         self.draw_image("save", self.WIDTH-400, 100)
         self.draw_image("load", self.WIDTH-600, 100)
-        
+
+######################################################## POPUPS CREATORS #####################################################
+    
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
@@ -496,6 +521,112 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
+    def create_save_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 3
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Save Config'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Save as :",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Filename"] = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Save_Submit"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Submit",
+            manager=self.manager,
+            container=popup_window
+        )
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
+    def create_load_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 3
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Retrieve sensors Ids
+        self.saved_files = self.get_saved_files()
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Saved Configs'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Select a file to load:",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+
+        for name in self.saved_files :
+            self.UI_elements["SavedFile" + name[:-4]] = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+                text=name[:-4],
+                manager=self.manager,
+                container=popup_window
+            )
+
+            current_y += button_height + margin
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
 ######################################################### SERIAL COMM FUNCTIONS #################################################
 
     def serial_comm(self):
@@ -633,6 +764,23 @@ class User_interface:
                         self.action_start_time = pygame.time.get_ticks() / 1000.0
                         self.trajectory_idx += 1
 
+    def create_save_file(self, filename):
+        with open('./saves/' + filename+'.txt', "w") as file:
+            file.write("RESIZE_FACTOR : " + str(self.RESIZE) +"\n")
+            file.write("HEIGHT : " + str(self.HEIGHT) +"\n")
+            for room in self.rooms:
+                line = str(room.width) + ", " + str(room.height) + ", " + str(room.pos) + ", " + str(room.room_num)
+                for side in room.sides:
+                    pass
+                    """ side_obj = room.sides.get(side)
+                    line += ", " + str(side_obj.pos) + ";" +  str(side_obj.img) + ";" + str(side_obj.type) """
+                file.write(line)
+
+    def get_saved_files(self):
+        directory = Path("./saves")
+        files = [f.name for f in directory.iterdir() if f.is_file()]
+        return files
+    
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
