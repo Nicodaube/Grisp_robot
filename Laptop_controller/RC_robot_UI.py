@@ -7,32 +7,45 @@ from Server import Server
 from Room import Room
 
 class User_interface:
-    WIDTH, HEIGHT = 1920, 1080
-    RESIZE = 2
+
+    # App General State
+    WIDTH, HEIGHT = 1920, 1080 # Screen Size
+    RESIZE = 2 # Resizing factor for the rooms
     running = True
-    message = 0
-    run = True
+    in_popup = False
+    active_popup = None
+    UI_elements = {}
+    temp_origin = None
+    x = 0
+    string = ""
+    image_dict = {}
+    rect_dict = {}
+
+    # App Room state
+    room_grid = ((0,0),(0,0))
+    rooms = []
+    sensor = []
+
+    # Predefined trajectory
+    trajectory = []
+    trajectory_idx = 0
+    current_action = ""
+    action_start_time = 0
+    action_duration = 0
+    is_trajectory_started = False
+    timer = 0
+
+    # Robot state
+    message = 0  #Message to send to the robot
+    run = True 
     stand = False
     kalman = True
     release_space = True
     release_enter = True
     release_t = True
     release_tab = True
-    in_popup = False
-    active_popup = None
-    UI_elements = {}
-    temp_origin = None
-    room_grid = ((0,0),(0,0))
     
-    x = 0
-    string = ""
-    image_dict = {}
-    rect_dict = {}
-
-    rooms = []
-    sensor = []
-    
-    def __init__(self):
+    def __init__(self, trajectory):
 
         pygame.init()
         self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
@@ -45,6 +58,7 @@ class User_interface:
         self.clock.tick(200)
 
         self.server = Server()
+        self.defined_trajectory(trajectory)
 
         self.load_figures()
 
@@ -64,11 +78,27 @@ class User_interface:
         minus_img = pygame.image.load('./img/minus.png')
         minus_img = pygame.transform.scale(minus_img, (minus_img.get_width() // 5, minus_img.get_height() // 5))
 
+        start_img = pygame.image.load('./img/button_start.png')
+        start_img = pygame.transform.scale(start_img, (start_img.get_width(), start_img.get_height()))
+
+        start_img_pressed = pygame.image.load('./img/start_pressed.png')
+        start_img_pressed = pygame.transform.scale(start_img_pressed, (start_img_pressed.get_width(), start_img_pressed.get_height()))
+
+        save_img = pygame.image.load('./img/button_save.png')
+        save_img = pygame.transform.scale(save_img, (save_img.get_width(), save_img.get_height()))
+
+        load_img = pygame.image.load('./img/button_load.png')
+        load_img = pygame.transform.scale(load_img, (load_img.get_width(), load_img.get_height()))
+
         self.image_dict["arrow"] = arrow_img
         self.image_dict["circle"] = circle_img
         self.image_dict["stop"] = stop_img
         self.image_dict["plus_L_0"] = plus_img
         self.image_dict["minus"] = minus_img
+        self.image_dict["start"] = start_img
+        self.image_dict["save"] = save_img
+        self.image_dict["load"] = load_img
+        self.image_dict["start_pressed"] = start_img_pressed
 
 ######################################################### TRIGGER CHECK #################################################
 
@@ -78,24 +108,30 @@ class User_interface:
                 self.running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                self.event_click_on_plus(event)
+                self.event_click(event)
                 
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
                 self.event_interact_popup(event)
-                
 
             self.manager.process_events(event)
 
-    def event_click_on_plus(self, event):
-        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event) and not self.in_popup:
+    def event_click(self, event):
+        if self.in_popup:
+            return
+        
+        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
             self.temp_origin = "plus_L_0"
             self.create_room_popup()
 
+        elif self.is_click_image("start", event) :
+            self.is_trajectory_started = True
+            self.timer = pygame.time.get_ticks()/1000
+
         for room in range(len(self.rooms)):
             for side in ["L", "R", "T", "B"]:
                 name = "plus_" + side + "_" + str(room)
-                if self.is_click_image(name, event) and not self.in_popup:
+                if self.is_click_image(name, event) :
                     self.in_popup = True
                     self.temp_origin = name
                     self.create_choice_popup()
@@ -141,13 +177,13 @@ class User_interface:
 ######################################################### KEYBOARD FUNCTIONS #################################################
 
     def check_keys_movement(self, keys):
-        if keys[pygame.K_z] or keys[pygame.K_UP]:
+        if keys[pygame.K_z] or keys[pygame.K_UP] or self.current_action == "front":
             self.x += -1
-        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
+        elif keys[pygame.K_s] or keys[pygame.K_DOWN] or self.current_action == "back":
             self.x += 1
-        elif keys[pygame.K_q] or keys[pygame.K_LEFT]:
+        elif keys[pygame.K_q] or keys[pygame.K_LEFT] or self.current_action == "left":
             self.x += 1j
-        elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+        elif keys[pygame.K_d] or keys[pygame.K_RIGHT] or self.current_action == "right":
             self.x += -1j
         elif keys[pygame.K_ESCAPE]:
             self.running = False
@@ -180,7 +216,7 @@ class User_interface:
             self.test, self.release_t =  False, True
 
     def check_standing(self, keys):
-        if keys[pygame.K_RETURN]:
+        if keys[pygame.K_RETURN] or self.current_action == "stand":
             if self.release_enter:
                 self.stand = not self.stand
                 self.release_enter = False
@@ -211,6 +247,10 @@ class User_interface:
         self.string += "Kalman filter\n" if self.kalman else "Complementary filter\n"
         self.string += "Running\n" if self.run else "Stopped\n"
         self.string += "Message: " + str(self.message) + "\n"
+        if self.is_trajectory_started :
+            self.string += "Timer : " + str(round((pygame.time.get_ticks()/1000) - self.timer, 1))
+        else : 
+            self.string += "Timer : 0"
 
         for i, line in enumerate(self.string.split("\n")):
             text = font.render(line, True, (0, 128, 0))
@@ -263,6 +303,14 @@ class User_interface:
         pygame.draw.line(self.screen, RED, point1, point2, width=10)
         pygame.draw.line(self.screen, RED, point2, point3, width=10)
 
+    def draw_buttons(self):
+        if self.is_trajectory_started :
+            self.draw_image("start_pressed", self.WIDTH-200, 100)
+        else :
+            self.draw_image("start", self.WIDTH-200, 100)
+        self.draw_image("save", self.WIDTH-400, 100)
+        self.draw_image("load", self.WIDTH-600, 100)
+        
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
@@ -455,6 +503,17 @@ class User_interface:
         Content = Content.decode().replace("\r\n", "")
         self.message = int(Content)
 
+    def defined_trajectory(self, file):
+        if file != None:
+            with open("./trajectories/" + file + ".txt") as file:
+                lines = file.readlines()
+                for line in lines:
+                    action, duration = line.split(" : ")
+                    self.trajectory.append((action, duration))
+
+        else:
+            self.trajectory = None
+
 ############################################################ HELPER FUNCTIONS #####################################################
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
@@ -583,13 +642,21 @@ class User_interface:
                 self.draw_room(room)
 
             self.draw_move_ctrl()
-            if len(self.rooms) == 0 :
-                self.draw_add_room()
+            self.draw_buttons()
+            self.draw_add_room()
             self.draw_string()
+
+            if self.is_trajectory_started:
+                if self.trajectory != None :
+                    current_time = pygame.time.get_ticks() / 1000.0
+                    if self.action_start_time + self.action_duration <= current_time and len(self.trajectory) >= self.trajectory_idx +1: 
+                        self.current_action = self.trajectory[self.trajectory_idx][0]
+                        self.action_duration = float(self.trajectory[self.trajectory_idx][1])
+                        self.action_start_time = pygame.time.get_ticks() / 1000.0
+                        self.trajectory_idx += 1
 
             self.manager.update(self.clock.tick(60)/1000)
             self.manager.draw_ui(self.screen)
-
             pygame.display.flip()
 
             self.serial_comm()
@@ -599,5 +666,8 @@ class User_interface:
         sys.exit()
 
 if __name__ == '__main__':
-    ui = User_interface()
+    if len(sys.argv) == 1:
+        ui = User_interface(None)
+    else :
+        ui = User_interface(sys.argv[1])
     ui.main_loop()

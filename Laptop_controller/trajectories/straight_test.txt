@@ -1,0 +1,6 @@
+stand : 10.0
+front : 1.5
+back : 1.0
+left : 1.0
+right : 1.0
+stand : 10.0
