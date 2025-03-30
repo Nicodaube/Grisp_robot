@@ -177,7 +177,18 @@ class User_interface:
 ######################################################### KEYBOARD FUNCTIONS #################################################
 
     def check_keys_movement(self, keys):
-        if keys[pygame.K_z] or keys[pygame.K_UP] or self.current_action == "front":
+        if keys[pygame.K_SPACE]:
+            if self.release_space:
+                self.release_space = False
+                if self.message < 10000000:
+                    self.run = True
+                else:
+                    self.run = False
+                    self.is_trajectory_started = False
+                    self.current_action = ""
+                    self.action_duration = 0
+                    self.trajectory_idx = 0
+        elif keys[pygame.K_z] or keys[pygame.K_UP] or self.current_action == "front":
             self.x += -1
         elif keys[pygame.K_s] or keys[pygame.K_DOWN] or self.current_action == "back":
             self.x += 1
@@ -187,13 +198,7 @@ class User_interface:
             self.x += -1j
         elif keys[pygame.K_ESCAPE]:
             self.running = False
-        elif keys[pygame.K_SPACE]:
-            if self.release_space:
-                self.release_space = False
-                if self.message < 10000000:
-                    self.run = True
-                else:
-                    self.run = False
+        
         else:
             self.release_space = True
 
@@ -219,8 +224,7 @@ class User_interface:
         if keys[pygame.K_RETURN] or self.current_action == "stand":
             if self.release_enter:
                 self.stand = not self.stand
-                self.release_enter = False
-                
+                self.release_enter = False       
         else:
             self.release_enter = True
 
@@ -618,6 +622,17 @@ class User_interface:
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
         return int(self.temp_origin[-1]), grid_x, grid_y
+    
+    def check_trajectory(self):
+        if self.is_trajectory_started:
+                if self.trajectory != None :
+                    current_time = pygame.time.get_ticks() / 1000.0
+                    if self.action_start_time + self.action_duration <= current_time and len(self.trajectory) >= self.trajectory_idx +1: 
+                        self.current_action = self.trajectory[self.trajectory_idx][0]
+                        self.action_duration = float(self.trajectory[self.trajectory_idx][1])
+                        self.action_start_time = pygame.time.get_ticks() / 1000.0
+                        self.trajectory_idx += 1
+
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
@@ -646,14 +661,7 @@ class User_interface:
             self.draw_add_room()
             self.draw_string()
 
-            if self.is_trajectory_started:
-                if self.trajectory != None :
-                    current_time = pygame.time.get_ticks() / 1000.0
-                    if self.action_start_time + self.action_duration <= current_time and len(self.trajectory) >= self.trajectory_idx +1: 
-                        self.current_action = self.trajectory[self.trajectory_idx][0]
-                        self.action_duration = float(self.trajectory[self.trajectory_idx][1])
-                        self.action_start_time = pygame.time.get_ticks() / 1000.0
-                        self.trajectory_idx += 1
+            self.check_trajectory()
 
             self.manager.update(self.clock.tick(60)/1000)
             self.manager.draw_ui(self.screen)
