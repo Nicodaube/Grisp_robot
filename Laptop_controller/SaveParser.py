@@ -1,4 +1,5 @@
 from Room import Room
+import help_fun
 
 def parse(filename, current_height, current_resize):
     rooms = []
@@ -13,7 +14,7 @@ def parse(filename, current_height, current_resize):
 
 def createRoom(line, height, current_height, resize, current_resize):
     splitted = line.split(", ")
-    new_width, new_height = compute_current_size(int(splitted[0]), int(splitted[1]), height, current_height, resize, current_resize)
+    new_width, new_height = help_fun.compute_current_size(int(splitted[0]), int(splitted[1]), height, current_height, resize, current_resize)
     room = Room(new_width,
                 new_height,
                 int(splitted[2][1:]),
@@ -24,9 +25,3 @@ def createRoom(line, height, current_height, resize, current_resize):
         room.modify_side(side, "./img/plus.png", "plus")
 
     return room
-                
-                     
-def compute_current_size(width, height, past_height, current_height,  past_resize, current_resize):
-   new_width, new_height = int(width / (past_height//past_resize)), int(height / (past_height//past_resize))
-   new_width, new_height = int(new_width * (current_height//current_resize)), int(new_height * (current_height//current_resize))
-   return new_width, new_height

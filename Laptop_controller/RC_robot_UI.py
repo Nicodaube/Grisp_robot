@@ -95,6 +95,12 @@ class User_interface:
         load_img = pygame.image.load('./img/button_load.png')
         load_img = pygame.transform.scale(load_img, (load_img.get_width(), load_img.get_height()))
 
+        zoom_in = pygame.image.load('./img/zoom_in.png')
+        zoom_in = pygame.transform.scale(zoom_in, (zoom_in.get_width()//8, zoom_in.get_height()//8))
+
+        zoom_out = pygame.image.load('./img/zoom_out.png')
+        zoom_out = pygame.transform.scale(zoom_out, (zoom_out.get_width()//8, zoom_out.get_height()//8))
+
         self.image_dict["arrow"] = arrow_img
         self.image_dict["circle"] = circle_img
         self.image_dict["stop"] = stop_img
@@ -104,6 +110,8 @@ class User_interface:
         self.image_dict["save"] = save_img
         self.image_dict["load"] = load_img
         self.image_dict["start_pressed"] = start_img_pressed
+        self.image_dict["zoom_in"] = zoom_in
+        self.image_dict["zoom_out"] = zoom_out
 
 ######################################################### TRIGGER CHECK #################################################
 
@@ -140,6 +148,18 @@ class User_interface:
         elif self.is_click_image("load", event):
             self.in_popup = True
             self.create_load_popup()
+
+        elif self.is_click_image("zoom_in", event):
+            if(self.RESIZE != 1):            
+                for room in self.rooms:
+                    room.update_size(self.RESIZE, self.RESIZE-1, self.HEIGHT)
+                self.RESIZE -= 1
+
+        elif self.is_click_image("zoom_out", event):  
+
+            for room in self.rooms:
+                room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
+            self.RESIZE += 1
 
         for room in range(len(self.rooms)):
             for side in ["L", "R", "T", "B"]:
@@ -335,8 +355,12 @@ class User_interface:
             self.draw_image("start_pressed", self.WIDTH-200, 100)
         else :
             self.draw_image("start", self.WIDTH-200, 100)
-        self.draw_image("save", self.WIDTH-400, 100)
-        self.draw_image("load", self.WIDTH-600, 100)
+        self.draw_image("save", self.WIDTH-375, 100)
+        self.draw_image("load", self.WIDTH-550, 100)
+
+        # Draw zoom
+        self.draw_image("zoom_in", self.WIDTH - 200, self.HEIGHT - 100)
+        self.draw_image("zoom_out", self.WIDTH - 375, self.HEIGHT - 100)
 
 ######################################################## POPUPS CREATORS #####################################################
     
