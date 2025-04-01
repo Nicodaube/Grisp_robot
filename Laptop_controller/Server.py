@@ -16,7 +16,7 @@ class Server:
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
             server_socket.bind((self.HOST, self.PORT))
-            print(f"Listening for UDP packets on {self.HOST}:{self.PORT}")
+            print(f"[SERVER] Listening for UDP packets on {self.HOST}:{self.PORT}")
 
             while True:
                 data, addr = server_socket.recvfrom(1024)
@@ -29,6 +29,8 @@ class Server:
                     print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
                 elif data[:8] == "Distance":
                     self.sensor_data[addr[0]] = float(data[9:])
+                else : 
+                    print("DATA " + data)
 
     def send(self, message):
         threading.Thread(target=self.snd_server, args=(message,), daemon=True).start()
@@ -38,7 +40,7 @@ class Server:
             for id, addr in self.sensors_ip.items():
                 ip, port = addr[0], addr[1]
                 srv_socket.sendto(message.encode(), (ip, port))
-                print("[SERVER] Sent to " + str(id) + " on ()" + str(ip) + ", " + str(port) + ") : " + str(message))
+                print("[SERVER] Sent to " + str(id) + " on (" + str(ip) + ", " + str(port) + ") : " + str(message))
 
     def get_sensors(self):
         return self.sensors_ip.keys()

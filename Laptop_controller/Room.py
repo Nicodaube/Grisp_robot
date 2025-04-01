@@ -1,4 +1,5 @@
 from Side import Side
+import help_fun
 
 class Room:
 
@@ -33,6 +34,13 @@ class Room:
         
     def add_room(self, side, room):
         self.sides[side] = room
+
+    def update_size(self, resize, new_resize, height):
+        self.width, self.height = help_fun.compute_current_size(self.width, self.height, height, height, resize, new_resize)
+        for side in ["L", "R", "T", "B"]:
+            x, y = self.compute_pos(side)
+            self.sides[side].pos = (x,y)
+
 
     
 
