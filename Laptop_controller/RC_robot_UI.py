@@ -205,7 +205,7 @@ class User_interface:
                 self.close_popup()
                 
                 room, x, y = self.get_sensor_pos()
-                self.server.send(str((room, x, y)))
+                self.server.update_sens(id, room, x, y)
                 self.draw_sensor()
                 self.temp_origin = None
 
