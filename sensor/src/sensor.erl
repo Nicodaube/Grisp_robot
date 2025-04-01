@@ -16,7 +16,7 @@ start(_Type, _Args) ->
     grisp:add_device(uart, pmod_maxsonar),
 
     wifi_setup(),
-    hera:start_measure(sonar_sensor, []),
+    loop(),
     {ok, self()}.
 
 % @private
@@ -77,3 +77,18 @@ send_udp_message(Host, Port, Message) ->
     {ok, Socket} = gen_udp:open(9000, [binary, {active, false}]),
     gen_udp:send(Socket, Host, Port, Message),
     gen_udp:close(Socket).
+
+loop() ->
+    receive
+        {start_measure, _} ->
+            % waits for a random amount of time before starting to measure to prevent sonar interference
+            {ok, number} = get_rand_num(),
+            timer:sleep(number),
+            hera:start_measure(sonar_sensor, [])
+    end.
+
+get_rand_num() ->
+    rand:seed(exsplus, {erlang:monotonic_time(), erlang:unique_integer([positive]), node()}),
+    {ok, rand:uniform(1000)}.
+
+
