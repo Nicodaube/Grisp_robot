@@ -12,7 +12,7 @@ class User_interface:
 
     # App General State
     WIDTH, HEIGHT = 1920, 1080 # Screen Size
-    RESIZE = 2 # Resizing factor for the rooms
+    RESIZE = 3 # Resizing factor for the rooms
     running = True
     in_popup = False
     active_popup = None
@@ -793,7 +793,7 @@ class User_interface:
             file.write("RESIZE_FACTOR : " + str(self.RESIZE) +"\n")
             file.write("HEIGHT : " + str(self.HEIGHT) +"\n")
             for room in self.rooms:
-                line = str(room.width) + ", " + str(room.height) + ", " + str(room.pos) + ", " + str(room.room_num)
+                line = str(room.width) + ", " + str(room.height) + ", " + str(room.pos) + ", " + str(room.room_num)+"\n"
                 for side in room.sides:
                     pass
                     """ side_obj = room.sides.get(side)
