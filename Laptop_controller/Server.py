@@ -37,7 +37,6 @@ class Server:
         elif type == "uni":
             threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
 
-
     def brd_server(self, message):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
             srv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -62,5 +61,10 @@ class Server:
     def update_sens(self, id, room, x, y):
         self.sensors.get(id).update_pos(room, x, y)
         
+    def send_pos(self):
+        for sensor in self.sensors.values() :
+            message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
+            self.send(message, "brd")
+
 if __name__ == '__main__' :
     serv = Server()
