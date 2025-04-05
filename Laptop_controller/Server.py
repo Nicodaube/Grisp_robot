@@ -63,8 +63,9 @@ class Server:
         
     def send_pos(self):
         for sensor in self.sensors.values() :
-            message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
-            self.send(message, "brd")
+            if sensor.x != -1 : 
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
+                self.send(message, "brd")
 
 if __name__ == '__main__' :
     serv = Server()

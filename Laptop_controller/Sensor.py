@@ -5,7 +5,8 @@ class Sensor :
         self.port = Port
         self.id = ID
         self.room = -1
-        self.pos = (-1,-1)
+        self.x = -1
+        self.y = -1
         self.distance = -1
 
     def update_pos(self, room, x, y):
