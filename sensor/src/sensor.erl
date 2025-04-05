@@ -74,7 +74,7 @@ get_grisp_id() ->
 
 
 send_udp_message(Host, Port, Message) ->
-    {ok, Socket} = gen_udp:open(9000, [binary, {active, false}]),
+    {ok, Socket} = gen_udp:open(8000, [binary, {active, false}]),
     gen_udp:send(Socket, Host, Port, Message),
     gen_udp:close(Socket).
 
@@ -82,6 +82,7 @@ loop() ->
     receive
         {start_measure, _} ->
             % waits for a random amount of time before starting to measure to prevent sonar interference
+            io:format("[SENSOR] starting measures"),
             {ok, number} = get_rand_num(),
             timer:sleep(number),
             hera:start_measure(sonar_sensor, [])
