@@ -12,6 +12,7 @@
 start(_Type, _Args) -> 
     io:format("[SENSOR] start initialization sequence~n"),
     {ok, _} = sensor_sup:start_link(),
+    hera_sub:subscribe(self()),
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
@@ -24,7 +25,7 @@ stop(_State) -> ok.
 
 wifi_setup() ->
     io:format("[SENSOR] WiFi setup begin~n"),
-    timer:sleep(15000),
+    timer:sleep(12000),
     case inet:getifaddrs() of
         {ok, List} ->
             % Parse Ip from inet return
@@ -80,16 +81,22 @@ send_udp_message(Host, Port, Message) ->
 
 loop() ->
     receive
-        {start_measure, _} ->
+        {hera_notify, {start_measure, Id}} ->
             % waits for a random amount of time before starting to measure to prevent sonar interference
-            io:format("[SENSOR] starting measures"),
-            {ok, number} = get_rand_num(),
-            timer:sleep(number),
-            hera:start_measure(sonar_sensor, [])
+            io:format("[SENSOR] Starting measures~n"),
+            {ok, N} = get_rand_num(),
+            timer:sleep(N),
+            hera:start_measure(sonar_sensor, []),
+            loop();
+        Msg ->
+            io:format("[SENSOR] receive ~p~n",[Msg]),
+            loop()
     end.
 
 get_rand_num() ->
-    rand:seed(exsplus, {erlang:monotonic_time(), erlang:unique_integer([positive]), node()}),
+    Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
+    rand:seed(exsplus, Seed),
     {ok, rand:uniform(1000)}.
+    
 
 
