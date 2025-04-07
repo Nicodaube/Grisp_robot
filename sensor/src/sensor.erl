@@ -17,7 +17,8 @@ start(_Type, _Args) ->
     grisp:add_device(uart, pmod_maxsonar),
 
     wifi_setup(),
-    loop(),
+    {ok, Id} = get_grisp_id(),
+    loop(Id),
     {ok, self()}.
 
 % @private
@@ -79,24 +80,36 @@ send_udp_message(Host, Port, Message) ->
     gen_udp:send(Socket, Host, Port, Message),
     gen_udp:close(Socket).
 
-loop() ->
+loop(Id) ->
     receive
-        {hera_notify, {start_measure, Id}} ->
-            % waits for a random amount of time before starting to measure to prevent sonar interference
-            io:format("[SENSOR] Starting measures~n"),
-            {ok, N} = get_rand_num(),
-            timer:sleep(N),
-            hera:start_measure(sonar_sensor, []),
-            loop();
+        {hera_notify, ["Pos", Ids, Xs, Ys]} ->
+            ParsedId = list_to_integer(Ids),
+            X = list_to_float(Xs),
+            Y = list_to_float(Ys),
+            SensorName = list_to_atom("sensor" ++ Ids),
+            hera_data:store(pos, SensorName, 0, [X, Y]),
+            io:format("[SENSOR] Sensor's ~p position : (~p,~p)~n",[ParsedId,X,Y]),
+            if Id == ParsedId ->                
+                {ok, N} = get_rand_num(),
+                timer:sleep(N),
+                io:format("[SENSOR] Starting measures~n"),
+                hera:start_measure(sonar_sensor, []),
+                loop(Id);
+               true ->
+                loop(Id)
+            end;
+        {hera_notify, Msg} ->
+            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            loop(Id);
         Msg ->
             io:format("[SENSOR] receive ~p~n",[Msg]),
-            loop()
+            loop(Id)
     end.
 
 get_rand_num() ->
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(1000)}.
+    {ok, rand:uniform(2000)}.
     
 
 

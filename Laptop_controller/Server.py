@@ -1,6 +1,7 @@
 import socket
 import threading
 from Sensor import Sensor
+import time
 
 class Server:
 
@@ -66,6 +67,7 @@ class Server:
             if sensor.x != -1 : 
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
                 self.send(message, "brd")
+                time.sleep(1)
 
 if __name__ == '__main__' :
     serv = Server()
