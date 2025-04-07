@@ -21,16 +21,17 @@ class Server:
 
             while True:
                 data, addr = server_socket.recvfrom(1024)
-                data = data.decode()
+                try :
+                    data = data.decode()
 
-                if data[:5] == "Hello":
-                    id = int(data[11:])
-                    self.sensors[id] = Sensor(addr[0], addr[1], id)
-                    print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
-                elif data[:8] == "Distance":
-                    self.sensors[addr[0]].update_data(float(data[9:]))
-                else : 
-                    print("DATA " + data)
+                    if data[:5] == "Hello":
+                        id = int(data[11:])
+                        self.sensors[id] = Sensor(addr[0], addr[1], id)
+                        print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
+                    elif data[:8] == "Distance":
+                        self.sensors[addr[0]].update_data(float(data[9:]))
+                except : 
+                    pass
 
     def send(self, message, type, id=None):
         if type == "brd":
@@ -65,9 +66,12 @@ class Server:
     def send_pos(self):
         for sensor in self.sensors.values() :
             if sensor.x != -1 : 
+                message = "Add_Device : SENSOR_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
+                self.send(message, "brd")
+                time.sleep(0.5)
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
                 self.send(message, "brd")
-                time.sleep(1)
+                time.sleep(0.5)
 
 if __name__ == '__main__' :
     serv = Server()
