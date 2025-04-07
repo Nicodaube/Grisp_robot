@@ -36,7 +36,7 @@ wifi_setup() ->
             % Check if the wifi setup has been done correctly
             case IpTuple of 
                 {172,_,_,_} -> 
-                    hera_com:add_device("Server", {172,20,10,8}, 5000),
+                    hera_com:add_device("SERVER", {172,20,10,8}, 5000),
                     handle_success();                  
                 {192,168,_,_} -> 
                     handle_success();
@@ -56,7 +56,7 @@ handle_success() ->
     io:format("[SENSOR] WiFi setup done~n"),
     [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
     {ok, Id} = get_grisp_id(),
-    send_udp_message("Server", "Hello from " ++ integer_to_list(Id), "UTF8").
+    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8").
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -80,6 +80,18 @@ send_udp_message(Name, Message, Type) ->
 
 loop(Id) ->
     receive
+        {hera_notify, ["Add_Device", Name, SIp, Port]} -> 
+            SelfName = "Sensor_" ++ integer_to_list(Id),           
+            case Name of 
+                SelfName ->
+                    ok;
+                _ ->
+                    io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+                    {ok, Ip} = inet:parse_address(SIp),
+                    IntPort = list_to_integer(Port),
+                    hera_com:add_device(Name, Ip, IntPort)
+            end,            
+            loop(Id);
         {hera_notify, ["Pos", Ids, Xs, Ys]} ->
             ParsedId = list_to_integer(Ids),
             X = list_to_float(Xs),
