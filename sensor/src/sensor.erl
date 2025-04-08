@@ -80,19 +80,19 @@ send_udp_message(Name, Message, Type) ->
 
 loop(Id) ->
     receive
-        {hera_notify, ["Add_Device", Name, SIp, Port]} -> 
+        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used devices           
             SelfName = "Sensor_" ++ integer_to_list(Id),           
             case Name of 
-                SelfName ->
+                SelfName -> % Don't register self
                     ok;
-                _ ->
+                _ -> 
                     io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
                     {ok, Ip} = inet:parse_address(SIp),
                     IntPort = list_to_integer(Port),
                     hera_com:add_device(Name, Ip, IntPort)
             end,            
             loop(Id);
-        {hera_notify, ["Pos", Ids, Xs, Ys]} ->
+        {hera_notify, ["Pos", Ids, Xs, Ys]} -> % Received at config time To get all the sensors positions
             ParsedId = list_to_integer(Ids),
             X = list_to_float(Xs),
             Y = list_to_float(Ys),
