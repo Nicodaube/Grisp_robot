@@ -1,13 +1,14 @@
 import socket
 import threading
+from Sensor import Sensor
+import time
 
 class Server:
 
-    HOST = '0.0.0.0'
+    HOST = '172.20.10.8'
     PORT = 5000
     buffer = []
-    sensors_ip = {}
-    sensor_data = {}
+    sensors = {}
 
     def __init__(self):
         self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
@@ -20,32 +21,57 @@ class Server:
 
             while True:
                 data, addr = server_socket.recvfrom(1024)
-                data = data.decode()
+                try :
+                    data = data.decode()
 
-                if data[:5] == "Hello":
-                    id = int(data[11:])
-                    self.sensors_ip[id] = addr
-                    self.sensor_data[addr[0]] = 0
-                    print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
-                elif data[:8] == "Distance":
-                    self.sensor_data[addr[0]] = float(data[9:])
-                else : 
-                    print("DATA " + data)
+                    if data[:5] == "Hello":
+                        id = int(data[11:])
+                        self.sensors[id] = Sensor(addr[0], addr[1], id)
+                        print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
+                    elif data[:8] == "Distance":
+                        self.sensors[addr[0]].update_data(float(data[9:]))
+                except : 
+                    pass
 
-    def send(self, message):
-        threading.Thread(target=self.snd_server, args=(message,), daemon=True).start()
+    def send(self, message, type, id=None):
+        if type == "brd":
+            threading.Thread(target=self.brd_server, args=(message,), daemon=True).start()
+        elif type == "uni":
+            threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
 
-    def snd_server(self, message):
+    def brd_server(self, message):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
-            for id, addr in self.sensors_ip.items():
-                ip, port = addr[0], addr[1]
-                srv_socket.sendto(message.encode(), (ip, port))
-                print("[SERVER] Sent to " + str(id) + " on (" + str(ip) + ", " + str(port) + ") : " + str(message))
+            srv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            broadcast_ip = '172.20.10.15'
+            port = 9000
+
+            srv_socket.sendto(message.encode(), (broadcast_ip, port))
+            print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
+
+    def uni_server(self, message, id):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
+            sensor = self.sensors.get(id)
+            ip = sensor.ip
+            port = sensor.port
+            srv_socket.sendto(message.encode(), (ip, port))
+            print("[SERVER] Sent to " + str(sensor.id) + " on (" + str(ip) + ", " + str(port) + ") : " + str(message))
 
     def get_sensors(self):
-        return self.sensors_ip.keys()
+        return self.sensors.keys()
 
-
+    def update_sens(self, id, room, x, y):
+        self.sensors.get(id).update_pos(room, x, y)
+        
+    def send_pos(self):
+        for sensor in self.sensors.values() :
+            if sensor.x != -1 : 
+                message = "Add_Device : SENSOR_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
+                self.send(message, "brd")
+                time.sleep(0.5)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
+                self.send(message, "brd")
+                time.sleep(0.5)
 
 if __name__ == '__main__' :
     serv = Server()

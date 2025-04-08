@@ -7,6 +7,7 @@ from Server import Server
 from Room import Room
 from pathlib import Path
 import SaveParser
+import time
 
 class User_interface:
 
@@ -138,6 +139,8 @@ class User_interface:
             self.create_room_popup()
 
         elif self.is_click_image("start", event) :
+            self.server.send_pos()
+            time.sleep(2)
             self.is_trajectory_started = True
             self.timer = pygame.time.get_ticks()/1000
 
@@ -205,7 +208,7 @@ class User_interface:
                 self.close_popup()
                 
                 room, x, y = self.get_sensor_pos()
-                self.server.send(str((room, x, y)))
+                self.server.update_sens(id, room, x, y)
                 self.draw_sensor()
                 self.temp_origin = None
 

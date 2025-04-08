@@ -12,11 +12,13 @@
 start(_Type, _Args) -> 
     io:format("[SENSOR] start initialization sequence~n"),
     {ok, _} = sensor_sup:start_link(),
+    hera_sub:subscribe(self()),
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
     wifi_setup(),
-    hera:start_measure(sonar_sensor, []),
+    {ok, Id} = get_grisp_id(),
+    loop(Id),
     {ok, self()}.
 
 % @private
@@ -24,7 +26,7 @@ stop(_State) -> ok.
 
 wifi_setup() ->
     io:format("[SENSOR] WiFi setup begin~n"),
-    timer:sleep(15000),
+    timer:sleep(20000),
     case inet:getifaddrs() of
         {ok, List} ->
             % Parse Ip from inet return
@@ -34,27 +36,27 @@ wifi_setup() ->
             % Check if the wifi setup has been done correctly
             case IpTuple of 
                 {172,_,_,_} -> 
-                    handle_success(IpTuple);                  
+                    hera_com:add_device("SERVER", {172,20,10,8}, 5000),
+                    handle_success();                  
                 {192,168,_,_} -> 
-                    handle_success(IpTuple);
+                    handle_success();
                 _ ->
                     io:format("[SENSOR] WiFi setup failed:~n"),
-                    [grisp_led:flash(L, red, 1000) || L <- [1, 2]],
+                    [grisp_led:flash(L, red, 750) || L <- [1, 2]],
                     error
                 end;
         _ -> 
             io:format("[SENSOR] WiFi setup failed:~n"),
-            [grisp_led:flash(L, red, 1000) || L <- [1, 2]],
+            [grisp_led:flash(L, red, 750) || L <- [1, 2]],
             error
     end,
     ok.
 
-handle_success(Ip) ->
+handle_success() ->
     io:format("[SENSOR] WiFi setup done~n"),
-    [grisp_led:color(L, green) || L <- [1, 2]],
+    [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
     {ok, Id} = get_grisp_id(),
-    io:format("[SENSOR] Sensor connected with IP : ~p and ID : ~p ~n", [Ip, Id]),
-    send_udp_message({172,20,10,8}, 5000, "Hello from " ++ integer_to_list(Id)).
+    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8").
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -73,7 +75,57 @@ get_grisp_id() ->
     {ok, SUM}.
 
 
-send_udp_message(Host, Port, Message) ->
-    {ok, Socket} = gen_udp:open(9000, [binary, {active, false}]),
-    gen_udp:send(Socket, Host, Port, Message),
-    gen_udp:close(Socket).
+send_udp_message(Name, Message, Type) ->
+    hera_com:send_unicast(Name, Message, Type).
+
+loop(Id) ->
+    receive
+        {hera_notify, ["Add_Device", Name, SIp, Port]} -> 
+            SelfName = "Sensor_" ++ integer_to_list(Id),           
+            case Name of 
+                SelfName ->
+                    ok;
+                _ ->
+                    io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+                    {ok, Ip} = inet:parse_address(SIp),
+                    IntPort = list_to_integer(Port),
+                    hera_com:add_device(Name, Ip, IntPort)
+            end,            
+            loop(Id);
+        {hera_notify, ["Pos", Ids, Xs, Ys]} ->
+            ParsedId = list_to_integer(Ids),
+            X = list_to_float(Xs),
+            Y = list_to_float(Ys),
+            SensorName = list_to_atom("sensor" ++ Ids),
+            hera_data:store(pos, SensorName, 0, [X, Y]),
+            io:format("[SENSOR] Sensor's ~p position : (~p,~p)~n",[ParsedId,X,Y]),
+            if Id == ParsedId ->
+
+                {ok, N} = get_rand_num(),
+                io:format("[SENSOR] Starting measures in ~p msec~n", [N]),
+                [grisp_led:color(L, green) || L <- [1, 2]],
+                timer:sleep(N),
+                io:format("[SENSOR] Starting measures~n"),
+                hera:start_measure(sonar_sensor, []),
+                loop(Id);
+               true ->
+                loop(Id)
+            end;
+        {hera_notify, Msg} ->
+            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            loop(Id);
+        {getID, From} ->
+            From ! id,
+            loop(id);
+        Msg ->
+            io:format("[SENSOR] receive ~p~n",[Msg]),
+            loop(Id)
+    end.
+
+get_rand_num() ->
+    Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
+    rand:seed(exsplus, Seed),
+    {ok, rand:uniform(2000)}.
+    
+
+
