@@ -2,7 +2,10 @@
 
 -export([
     round/2, calibrate/0, kalman_angle/8, complem_angle/1, select_angle/3,
-    speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1
+    speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1,
+    enforce_loop_frequency/1, flicker_led/2, manage_logging_transition/3,
+    update_log_list/3, handle_incoming_messages/1, robot_state_transition/5,
+    robot_output_state/1
 ]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -185,3 +188,190 @@ wait_help(_, Tend) ->
 %% @return - The byte value represented by the list of bits.
 get_byte([A, B, C, D, E, F, G, H]) ->
     A*128 + B*64 + C*32 + D*16 + E*8 + F*4 + G*2 + H.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Loop frequency management
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc Ensures the robot loop runs at the desired frequency by inserting active delays.
+%% @param T_End - The end time of the previous loop iteration.
+%% @return - Returns `ok` after enforcing the loop frequency.
+enforce_loop_frequency(T_End) ->
+    T_Now = erlang:system_time() / 1.0e6,
+
+    case ets:lookup(variables, "Freq_Goal") of
+        [{_, Freq_Goal}] ->
+            Delay_Goal_ms = 1000.0 / Freq_Goal, % Target loop time in ms
+            Elapsed_ms = T_Now - T_End,
+
+            if
+                Elapsed_ms < Delay_Goal_ms ->
+                    helper_module:wait(Delay_Goal_ms - Elapsed_ms);
+                true ->
+                    ok
+            end;
+        [] ->
+            % If Freq_Goal not found, do nothing
+            ok
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Robot testing features
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc Manages LED flickering pattern during active logging.
+%% @param Logging - Boolean flag indicating whether logging is active.
+%% @param N - The current loop iteration count.
+%% @return - The updated LED state based on the logging status and loop count.
+flicker_led(true, N) ->
+    if
+        N rem 9 < 4 ->
+            grisp_led:color(1, {1, 1, 0}),
+            grisp_led:color(2, {1, 1, 0});
+        true ->
+            grisp_led:color(1, {0, 0, 0}),
+            grisp_led:color(2, {0, 0, 0})
+    end;
+
+flicker_led(false, _) ->
+    ok.
+
+%% @doc Handles the start and stop of logging based on state transitions.
+%% @param Hera_pid - The process ID of the Hera process for logging.
+%% @param Logging - The current logging state (true or false).
+%% @param Logging_New - The new logging state after transition.
+%% @return - The updated logging state based on the transition.
+manage_logging_transition(Hera_pid, false, true) ->
+    % Transition from not logging to logging
+    Hera_pid ! {self(), start_log};
+
+manage_logging_transition(Hera_pid, true, false) ->
+    % Transition from logging to not logging
+    grisp_led:color(1, {1, 1, 0}),
+    grisp_led:color(2, {1, 1, 0}),
+    Hera_pid ! {self(), stop_log};
+
+manage_logging_transition(_, _, _) ->
+    % No change
+    ok.
+
+%% @doc Updates the robot log list with a new data entry if logging is active.
+%% @param Logging_New - The new logging state (true or false).
+%% @param Log_List - The current log list.
+%% @param New_Data - The new data entry to be added to the log list.
+%% @return - The updated log list based on the logging state.
+update_log_list(Logging_New, Log_List, New_Data) ->
+    receive
+        {From, log_values} ->  
+            From ! {self(), log, Log_List}
+    after 0 ->
+        if
+            Logging_New ->
+                [New_Data | Log_List];
+            true ->
+                Log_List
+        end
+    end.
+
+%% @doc Handles asynchronous incoming messages to the robot (Hera queries, debug commands, etc.)
+%% @param Data_List - The list of data to be sent in response to incoming messages.
+%% @return - Returns `ok` after processing the incoming messages.
+handle_incoming_messages(Data_List) ->
+    receive
+        {From, get_all_data} ->
+            From ! {self(), data, Data_List};
+
+        {From, freq} ->
+            [_, One_on_Dt, _, _, _, _, _, _, _, _, _, _, _] = Data_List,
+            From ! {self(), One_on_Dt}; 
+
+        {From, acc} ->
+            [_, _, _, Acc, _, _, _, _, _, _, _, _, _] = Data_List,
+            From ! {self(), Acc};
+
+        {_, Msg} ->
+            io:format("[Robot] Unknown message received: ~p~nSupported: [get_all_data, freq, acc]~n", [Msg])
+    after 0 ->
+        ok
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Robot State Management
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% @doc Handles state transitions for the robot based on sensors and commands.
+%% @param Robot_State The current state of the robot.
+%% @param Get_Up Flag indicating whether the robot should get up.
+%% @param Robot_Up Flag indicating whether the robot is upright.
+%% @param Arm_Ready Flag indicating whether the robot's arms are ready.
+%% @param Abs_Angle The absolute angle of the robot.
+%% @return The next state of the robot based on the current state and conditions.
+robot_state_transition(Robot_State, Get_Up, Robot_Up, Arm_Ready, Abs_Angle) ->
+    case Robot_State of
+        rest ->
+            if Get_Up -> raising; true -> rest end;
+        
+        raising ->
+            if Robot_Up -> stand_up;
+               not Get_Up -> soft_fall;
+               true -> raising
+            end;
+        
+        stand_up ->
+            if not Get_Up -> wait_for_extend;
+               not Robot_Up -> rest;
+               true -> stand_up
+            end;
+        
+        wait_for_extend ->
+            prepare_arms;
+        
+        prepare_arms ->
+            if Arm_Ready -> free_fall;
+               Get_Up -> stand_up;
+               not Robot_Up -> rest;
+               true -> prepare_arms
+            end;
+        
+        free_fall ->
+            if Abs_Angle > 10 -> wait_for_retract;
+               true -> free_fall
+            end;
+        
+        wait_for_retract ->
+            soft_fall;
+        
+        soft_fall ->
+            if Arm_Ready -> rest;
+               Get_Up -> raising;
+               true -> soft_fall
+            end
+    end.
+
+%% @doc Determines output command flags based on robot high-level state.
+%% @param State The current state of the robot.
+%% @return A tuple containing the output flags: {Power, Freeze, Extend, Robot_Up_Bit}.
+robot_output_state(State) ->
+    % Determine the output state of the robot based on its current state
+    case State of
+        rest -> 
+            {0, 0, 0, 0}; % No power, no freeze, no extension, robot is not upright
+        raising -> 
+            {1, 0, 1, 0}; % Power is on, no freeze, extension is active, robot is not upright
+        stand_up -> 
+            {1, 0, 0, 1}; % Power is on, no freeze, no extension, robot is upright
+        wait_for_extend -> 
+            {1, 0, 1, 1}; % Power is on, no freeze, extension is active, robot is upright
+        prepare_arms -> 
+            {1, 0, 1, 1}; % Power is on, no freeze, extension is active, robot is upright
+        free_fall -> 
+            {1, 1, 1, 1}; % Power is on, freeze is active, extension is active, robot is upright
+        wait_for_retract -> 
+            {1, 0, 0, 0}; % Power is on, no freeze, no extension, robot is not upright
+        soft_fall -> 
+            {1, 0, 0, 0}  % Power is on, no freeze, no extension, robot is not upright
+    end.
+
+
+
+
