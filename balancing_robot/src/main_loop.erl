@@ -6,81 +6,72 @@
 
 -define(INCH_TO_CM, 2.54). % Conversion factor from inch to cm
 
-%Duration of a logging sequence
 -define(LOG_DURATION, 15000).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Robot 
+%% Robot Initialization
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 robot_init(Hera_pid) ->
 
-    % Set process priority to maximum for time-critical operations. (adds CPU performance)
+    % Set maximum process priority for real-time critical tasks
     process_flag(priority, max),
 
-    % Starting timestamp for the robot in ms
-    T0 = erlang:system_time()/1.0e6,
+    % Initial timestamp [ms]
+    T0 = erlang:system_time() / 1.0e6,
 
-    % Create a table for global variables and set the default frequency goal
-    %% The code initializes an ETS (Erlang Term Storage) table named `variables`.
-    %% 
-    %% - The table is created with the following options:
-    %%   - `set`: Specifies that the table is a set, meaning each key is unique.
-    %%   - `public`: Makes the table accessible to all processes.
-    %%   - `named_table`: Allows the table to be referenced by its name (`variables`) instead of a table identifier.
-    %%
-    %% - After creation, an entry is inserted into the table:
-    %%   - Key: `"Freq_Goal"` (a string).
-    %%   - Value: `300.0` (a floating-point number).
-    %%
-    %% The resulting table structure is as follows:
-    %%   - Table Name: `variables`
-    %%   - Key-Value Pairs:
-    %%     - `"Freq_Goal"` => `300.0`
+    % Create ETS table for shared variables
+    % - 'variables' table (public, named) to store real-time global state
     ets:new(variables, [set, public, named_table]),
-    ets:insert(variables, {"Freq_Goal", 300.0}),
+    ets:insert(variables, {"Freq_Goal", 300.0}),  % Initial loop frequency goal [Hz]
 
-    % Calibration process for the gyroscope
+    % Calibration of gyroscope offsets
     io:format("[Robot] Calibrating... Do not move the pmod_nav!~n"),
-    grisp_led:color(1, {1, 0, 0}), % Set LED 1 to red during calibration
-    grisp_led:color(2, {1, 0, 0}), % Set LED 2 to red during calibration
-    [_Gx0, Gy0, _Gz0] = helper_module:calibrate(), % Perform calibration
+    grisp_led:color(1, {1, 0, 0}),  % LEDs red during calibration
+    grisp_led:color(2, {1, 0, 0}),
+    [_Gx0, Gy0, _Gz0] = helper_module:calibrate(),
     io:format("[Robot] Done calibrating~n"),
 
-    % Initialize Kalman filter matrices
-    X0 = mat:matrix([[0], [0]]), % Initial state matrix
-    P0 = mat:matrix([[0.1, 0], [0, 0.1]]), % Initial covariance matrix
+    % Initialize Kalman filter state
+    % - X0: State vector [angle, angular velocity, distance to obstacle]
+    % - P0: State covariance matrix
+    X0 = mat:matrix([[0], [0], [0]]),
+    P0 = mat:matrix([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1]]),
 
-    % Open the I2C bus for communication
+    % Open I2C bus for communication with external devices (ESP32, etc.)
     I2Cbus = grisp_i2c:open(i2c1),
 
-    % Initialize PID controllers for speed and stability
+    % Initialize PID controllers
+    % - Pid_Speed: PI controller for advance speed
+    % - Pid_Stability: PD controller for tilt stability
+    % - Pid_Obstacle_Avoidance: PI controller for slowing down when detecting obstacles
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
+    Pid_Obstacle_Avoidance = spawn(pid_controller, pid_init, [-0.06, -0.02, 0.0, -1, 60.0, 0.0]),
 
-    % ============================ MODIFIED CODE ============================
-
-    % TODO: Nouvelle boucle qui controle la vitesse du robot pour ralentir devant un obstacle
-
-    % =======================================================================
-
-    io:format("[Robot] Pid of the speed controller: ~p.~n", [Pid_Speed]),
-    io:format("[Robot] Pid of the stability controller: ~p.~n", [Pid_Stability]),
+    io:format("[Robot] Pid of the speed controller: ~p~n", [Pid_Speed]),
+    io:format("[Robot] Pid of the stability controller: ~p~n", [Pid_Stability]),
+    io:format("[Robot] Pid of the obstacle avoidance controller: ~p~n", [Pid_Obstacle_Avoidance]),
     io:format("[Robot] Starting movement of the robot.~n"),
 
-    % Call the main loop of the robot with initial parameters
+    % Launch main control loop with initial state
     robot_main(
-        T0, Hera_pid, 
-        {rest, false}, % Initial robot state and "robot up" status
-        {T0, X0, P0}, % Initial time, state, and covariance
-        I2Cbus, % I2C bus handle
-        {0, T0, []}, % Logging state, end time, and log list
-        {Gy0, 0.0, 0.0}, % Gyroscope offset and complementary filter state
-        {Pid_Speed, Pid_Stability}, % PID controllers
-        {0.0, 0.0}, % Initial advance and turning velocity references
-        {0, 0, 200.0, T0} % Frequency computation parameters
+        T0, Hera_pid,
+        {rest, false},            % Robot state (rest) and "robot up" flag (false)
+        {T0, X0, P0},              % Initial time, Kalman state, Kalman covariance
+        I2Cbus,                   % I2C communication bus
+        {0, T0, []},               % Logging: counter, end time, empty log list
+        {Gy0, 0.0, 0.0},           % Gyroscope offset, complementary filter initial angle/rate
+        {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, % PID controllers
+        {0.0, 0.0},                % Initial advance and turning velocities [cm/s, deg/s]
+        {0, 0, 200.0, T0}          % Loop frequency tracking {N, freq, mean_freq, time_end}
     ).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Robot Main Loop
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% @doc Main loop function for the robot's operation.
 %% @spec robot_main(
@@ -109,11 +100,11 @@ robot_init(Hera_pid) ->
 %% @param Loop_Info A tuple containing loop-related information: loop count, frequency, mean frequency, 
 %%                  and the end time of the loop.
 %% @return The function does not explicitly return a value but performs the main operations of the robot's loop.
-robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, {Logging, Log_End, Log_List}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, {Logging, Log_End, Log_List}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
 
     %Delta time of loop
-    T1 = erlang:system_time()/1.0e6, %[ms]
-    Dt = (T1 - T0)/1000.0,           %[s]
+    T1 = erlang:system_time()/1.0e6, % [ms]
+    Dt = (T1 - T0)/1000.0,           % [s]
 
     %%%%%%%%%%%%%%%%%%%%%%%%%
     %%% Input from Sensor %%%
@@ -124,7 +115,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     %% The accelerometer data includes:
     %% - Ax: Acceleration along the X-axis, typically measured in meters per second squared (m/s²).
     %% - Az: Acceleration along the Z-axis, typically measured in meters per second squared (m/s²).
-    %Read data from the accelerometer and gyroscope
+    % Read data from the accelerometer and gyroscope
     [Gy, Ax, Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
     
     % ============================ MODIFIED CODE ============================
@@ -133,13 +124,38 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
 
     % Get the distance from the sonar sensor
     Distance_Sonar = pmod_maxsonar:get(), % return distance in inch to the closest object detected 
-    Distance_Sonar = Distance_Sonar * ?INCH_TO_CM, % convert distance from inch to cm
+    Distance_Sonar_cm = Distance_Sonar * ?INCH_TO_CM, % convert distance from inch to cm
+    Rounded_distance = helper_module:round(Distance_Sonar_cm, 4), % round the distance to 4 decimal places
 
-    % TODO: Filter noise for huge peaks 
-    
+    % Filter noise for huge peaks
+    % Define a maximum allowable distance change (in cm) to filter out noise
+    Max_Change = 600.0,
 
-    % Log the measured distance from the sonar sensor
-    io:format("[SONAR SENSOR] Measured distance: ~p ~n cm", [Distance_Sonar]),
+    % Retrieve the previous distance measurement from the ETS table, or default to the current distance
+    case ets:lookup(variables, "Prev_Distance") of
+        [] ->
+            % If no previous distance is stored, use the current distance
+            Prev_Distance = Rounded_distance;
+        [{_, Prev_Distance_Stored}] ->
+            Prev_Distance = Prev_Distance_Stored
+    end,
+
+    % Compute the absolute change in distance
+    Distance_Change = abs(Rounded_distance - Prev_Distance),
+
+    % Check if the change exceeds the maximum allowable threshold
+    Filtered_Distance = 
+        if
+            Distance_Change > Max_Change ->
+                % If the change is too large, use the previous distance
+                Prev_Distance;
+            true ->
+                % Otherwise, use the current distance
+                Rounded_distance
+        end,
+
+    % Store the filtered distance as the new previous distance in the ETS table
+    ets:insert(variables, {"Prev_Distance", Filtered_Distance}),
 
     % =======================================================================
 
@@ -152,6 +168,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     
     % Decode the half-float values for left and right wheel speeds
     [Speed_L, Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
+
     
     % Compute the average speed of the robot based on the left and right wheel speeds
     Speed = (Speed_L + Speed_R) / 2,
@@ -194,16 +211,11 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     % Perform Kalman filter computation to estimate the angle.
     % The Kalman filter uses the current sensor data (accelerometer and gyroscope)
     % and the previous state (X0, P0) to compute the new state (X1, P1).
-    {X1, P1} = helper_module:kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
-    [Th_Kalman, _W_Kalman] = mat:to_array(X1), % Extract the angle (Th_Kalman) from the state matrix.
+    {X1, P1} = helper_module:kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0, Filtered_Distance),
+    [Th_Kalman, _W_Kalman, D_Kalman] = mat:to_array(X1), % Extract the angle (Th_Kalman) from the state matrix.
     Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,   % Convert the angle from radians to degrees.
 
-    % ============================ MODIFIED CODE ============================
-    
-    % TODO: Add the sonar data to the filter to adapt the speed based on the environment
-   
-    % =======================================================================
-
+    io:format("[Main Loop] Measured distance from sonar: ~p ~n cm and value of kalman filter is ~p ~n cm\n", [Filtered_Distance, D_Kalman]),
 
     % Compute the complementary filter angle.
     % The complementary filter combines gyroscope and accelerometer data to estimate the angle.
@@ -216,7 +228,6 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     % - If Switch is true, use the Kalman filter angle.
     % - Otherwise, use the complementary filter angle.
     Angle = helper_module:select_angle(Switch, Angle_Kalman, Angle_Complem),
-
 
     %%%%%%%%%%%%%%%%%%
     %%% Controller %%%
@@ -234,9 +245,10 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     % - Turn_V_Ref_New: Updated turning velocity reference for the next loop iteration, also sent to the ESP32.
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller(
         {Dt, Angle, Speed}, 
-        {Pid_Speed, Pid_Stability}, 
+        {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, 
         {Adv_V_Goal, Adv_V_Ref}, 
-        {Turn_V_Goal, Turn_V_Ref}
+        {Turn_V_Goal, Turn_V_Ref},
+        {D_Kalman, exponential}
     ),
 
     %%%%%%%%%%%%%%%%%%%%%%%
@@ -290,7 +302,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
             end;
         % If the robot is in the "stand_up" state:
         stand_up -> 
-            if
+            if  
                 % Transition to "wait_for_extend" state if the Get_Up flag is false
                 not Get_Up -> Next_Robot_State = wait_for_extend;
                 % Transition to "rest" state if the robot is no longer upright
@@ -513,7 +525,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     T_End_New = erlang:system_time()/1.0e6,
 
     %Loop back with updated state
-    robot_main(Start_Time, Hera_pid, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, I2Cbus, {Logging_New, Log_End_New, Log_List_New}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, Hera_pid, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, I2Cbus, {Logging_New, Log_End_New, Log_List_New}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
