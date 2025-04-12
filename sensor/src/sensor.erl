@@ -16,6 +16,7 @@ start(_Type, _Args) ->
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
+    io:format("[SENSOR] WiFi setup begin~n"),
     wifi_setup(),
     {ok, Id} = get_grisp_id(),
     loop(Id),
@@ -25,7 +26,6 @@ start(_Type, _Args) ->
 stop(_State) -> ok.
 
 wifi_setup() ->
-    io:format("[SENSOR] WiFi setup begin~n"),
     timer:sleep(20000),
     case inet:getifaddrs() of
         {ok, List} ->
@@ -43,12 +43,12 @@ wifi_setup() ->
                 _ ->
                     io:format("[SENSOR] WiFi setup failed:~n"),
                     [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-                    error
+                    wifi_setup()
                 end;
         _ -> 
             io:format("[SENSOR] WiFi setup failed:~n"),
             [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-            error
+            wifi_setup()
     end,
     ok.
 
