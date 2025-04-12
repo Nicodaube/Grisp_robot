@@ -126,17 +126,15 @@ loop(Id) ->
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             if Id == ParsedId ->
 
-                {ok, N} = get_rand_num(),
-                io:format("[SENSOR] Starting measures in ~p msec~n", [N]),
                 [grisp_led:color(L, green) || L <- [1, 2]],
-                timer:sleep(N),
                 hera:start_measure(sonar_sensor, []),
                 spawn(target_angle, start_link, [Id]),
                 loop(Id);
                true ->
                 loop(Id)
             end;
-
+        {hera_notify, ["measure"]} ->
+            sonar_sensor ! {measure};
         {hera_notify, Msg} ->
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop(Id);
@@ -145,10 +143,6 @@ loop(Id) ->
             loop(Id)
     end.
 
-get_rand_num() ->
-    Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
-    rand:seed(exsplus, Seed),
-    {ok, rand:uniform(2000)}.
-    
+
 
 
