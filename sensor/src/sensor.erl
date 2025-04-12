@@ -56,7 +56,8 @@ handle_success() ->
     io:format("[SENSOR] WiFi setup done~n"),
     [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
     {ok, Id} = get_grisp_id(),
-    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8").
+    ack_loop(Id).
+    
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -74,6 +75,16 @@ get_grisp_id() ->
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
 
+ack_loop(Id) ->
+    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8"),
+    receive
+        {hera_notify, ["Ack", _]} ->
+            io:format("[SENSOR] Received ACK from server"),
+            ok
+
+    after 10000 ->
+        ack_loop(Id)
+    end.
 
 send_udp_message(Name, Message, Type) ->
     hera_com:send_unicast(Name, Message, Type).
