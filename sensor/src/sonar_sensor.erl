@@ -18,11 +18,8 @@ measure(State) ->
     R_Dist_cm = round(Dist_cm, 4),
 
     Seq = maps:get(seq, State, 1),
-    io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, R_Dist_cm]),
+    %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, R_Dist_cm]),
     SensorName = persistent_term:get(sensor_name),
-    hera_data:store(distance, SensorName, Seq, [R_Dist_cm]),
-
-    
     NewState = State#{seq => Seq + 1},
     {ok, [R_Dist_cm], distance, SensorName, NewState}. 
 

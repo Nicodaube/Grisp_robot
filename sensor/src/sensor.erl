@@ -16,8 +16,10 @@ start(_Type, _Args) ->
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
+    io:format("[SENSOR] WiFi setup begin~n"),
     wifi_setup(),
     Id = persistent_term:get(id),
+    io:format("[SENSOR] Waiting for start signal ...~n"),
     loop(Id),
     {ok, self()}.
 
@@ -53,19 +55,19 @@ wifi_setup() ->
                 _ ->
                     io:format("[SENSOR] WiFi setup failed:~n"),
                     [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-                    error
+                    wifi_setup()
                 end;
         _ -> 
             io:format("[SENSOR] WiFi setup failed:~n"),
             [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-            error
+            wifi_setup()
     end,
     ok.
 
 handle_success(Id) ->
     io:format("[SENSOR] WiFi setup done~n"),
     [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
-    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8").
+    ack_loop(Id).
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -82,6 +84,17 @@ get_grisp_id() ->
 
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
+
+ack_loop(Id) ->
+    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8"),
+    receive
+        {hera_notify, ["Ack", _]} ->
+            io:format("[SENSOR] Received ACK from server"),
+            ok
+
+    after 10000 ->
+        ack_loop(Id)
+    end.
 
 send_udp_message(Name, Message, Type) ->
     hera_com:send_unicast(Name, Message, Type).
@@ -110,14 +123,13 @@ loop(Id) ->
             SensorName = list_to_atom("sensor_" ++ Ids),
             hera_data:store(room, SensorName, 1, [Room]),
             hera_data:store(pos, SensorName, 1, [X, Y]),
-            io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
+            %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             if Id == ParsedId ->
 
                 {ok, N} = get_rand_num(),
                 io:format("[SENSOR] Starting measures in ~p msec~n", [N]),
                 [grisp_led:color(L, green) || L <- [1, 2]],
                 timer:sleep(N),
-                io:format("[SENSOR] Starting measures~n"),
                 hera:start_measure(sonar_sensor, []),
                 spawn(target_angle, start_link, [Id]),
                 loop(Id);

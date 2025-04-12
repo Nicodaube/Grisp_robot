@@ -19,12 +19,11 @@ loop(SensID, Seq) ->
                 {ok, [Ox, Oy, Odist]} = get_data(H),                
                 {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
                 hera_data:store(angle, SensName, Seq, [Angle]),
-                hera_com:send_unicast(angle, Seq, SensName, [Angle]),
+                hera_com:send(angle, Seq, SensName, [Angle]),
                 io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
                 loop(SensID, Seq + 1);
-            Other ->
-                io:format("[TARGET_ANGLE] rooms = ~p~n",[Other]),
-                loop(SensID, Seq)
+            _ ->
+                io:format("[TARGET_ANGLE] No other sensor in the room~n")
         end;
         
       Msg ->
@@ -42,7 +41,7 @@ find_sensors_room(Room, SensName) ->
                 _ ->
                     case hera_data:get(room, Name) of
                         [{_Node, _Seq, _Ts, [ORoom]}] when Room =:= ORoom ->
-                                io:format("[TARGET_ANGLE] Sens : ~p is in the same room as this sensor~n", [Name]),
+                                %io:format("[TARGET_ANGLE] Sens : ~p is in the same room as this sensor~n", [Name]),
                                 [Name | Acc];
                         _ ->
                             Acc
