@@ -66,10 +66,10 @@ class Server:
     def send_pos(self):
         for sensor in self.sensors.values() :
             if sensor.x != -1 : 
-                message = "Add_Device : SENSOR_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
+                message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
                 self.send(message, "brd")
                 time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
 
