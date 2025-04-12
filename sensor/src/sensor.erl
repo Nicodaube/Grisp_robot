@@ -19,6 +19,7 @@ start(_Type, _Args) ->
     io:format("[SENSOR] WiFi setup begin~n"),
     wifi_setup(),
     Id = persistent_term:get(id),
+    io:format("[SENSOR] Waiting for start signal ...~n"),
     loop(Id),
     {ok, self()}.
 
@@ -122,14 +123,13 @@ loop(Id) ->
             SensorName = list_to_atom("sensor_" ++ Ids),
             hera_data:store(room, SensorName, 1, [Room]),
             hera_data:store(pos, SensorName, 1, [X, Y]),
-            io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
+            %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             if Id == ParsedId ->
 
                 {ok, N} = get_rand_num(),
                 io:format("[SENSOR] Starting measures in ~p msec~n", [N]),
                 [grisp_led:color(L, green) || L <- [1, 2]],
                 timer:sleep(N),
-                io:format("[SENSOR] Starting measures~n"),
                 hera:start_measure(sonar_sensor, []),
                 spawn(target_angle, start_link, [Id]),
                 loop(Id);
