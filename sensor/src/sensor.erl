@@ -119,7 +119,7 @@ loop(Id) ->
                 timer:sleep(N),
                 io:format("[SENSOR] Starting measures~n"),
                 hera:start_measure(sonar_sensor, []),
-                spawn(robot_angle, start_link, [Id]),
+                spawn(target_angle, start_link, [Id]),
                 loop(Id);
                true ->
                 loop(Id)
