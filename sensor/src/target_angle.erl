@@ -4,32 +4,45 @@
 
 start_link(SensID) ->
     io:format("[TARGET_ANGLE] Spawning~n"),
-    spawn(fun () -> loop(SensID, 1) end),
+    case setup() of
+        {ok, _} ->
+            spawn(fun () -> loop(SensID, 1) end);
+        _ ->
+            ok
+    end,
     ok.
 
-loop(SensID, Seq) ->
-    timer:sleep(500),
+setup() ->
+    timer:sleep(1500),
     SensName = persistent_term:get(sensor_name),
     case hera_data:get(room, SensName) of
       [{_, _, _, [Room]}] ->
-        {ok, [X, Y, Dist]} = get_data(SensName),
-
         case find_sensors_room(Room, SensName) of 
             [H|_] ->
-                {ok, [Ox, Oy, Odist]} = get_data(H),                
-                {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
-                hera_data:store(angle, SensName, Seq, [Angle]),
-                hera_com:send(angle, Seq, SensName, [Angle]),
-                io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
-                loop(SensID, Seq + 1);
+                io:format("[TARGET_ANGLE] Other sensor is : ~p~n",[H]),
+                persistent_term:put(osensor, H),
+                {ok, Room};
             _ ->
-                io:format("[TARGET_ANGLE] No other sensor in the room~n")
+                io:format("[TARGET_ANGLE] No other sensor in the room~n"),
+                stop
         end;
         
       Msg ->
         io:format("[TARGET_ANGLE] Error in getting sensor pos ~p~n",[Msg]),
-        loop(SensID, Seq)
+        timer:sleep(500),
+        setup()
     end.
+loop(SensID, Seq) ->
+    timer:sleep(500),
+    SensName = persistent_term:get(sensor_name),
+    Osensor = persistent_term:get(osensor),
+    {ok, [X, Y, Dist]} = get_data(SensName),
+    {ok, [Ox, Oy, Odist]} = get_data(Osensor),                
+    {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
+    hera_data:store(angle, SensName, Seq, [Angle]),
+    hera_com:send(angle, Seq, SensName, [Angle]),
+    io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
+    loop(SensID, Seq + 1).
 
 find_sensors_room(Room, SensName) ->
     Devices = persistent_term:get(devices),

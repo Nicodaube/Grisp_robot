@@ -89,7 +89,7 @@ ack_loop(Id) ->
     send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8"),
     receive
         {hera_notify, ["Ack", _]} ->
-            io:format("[SENSOR] Received ACK from server"),
+            io:format("[SENSOR] Received ACK from server~n"),
             ok
 
     after 10000 ->
