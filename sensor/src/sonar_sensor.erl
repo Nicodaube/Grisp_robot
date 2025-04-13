@@ -9,7 +9,7 @@ init(_Args) ->
     {ok, #{seq => 1}, #{
         name => sonar_sensor,
         iter => infinity,
-        timeout => 1000
+        timeout => 500
     }}.
     
 measure(State) ->
@@ -23,8 +23,9 @@ measure(State) ->
             receive
                 {measure} ->
                     io:format("[SONAR_SENSO] possible collision waiting for ~p~n",[N]),
-                    timer:sleep(N),
-                    measure(State)
+                    timer:sleep(N div 2),
+                    {ok, Measure, NewState} = get_measure(State),            
+                    {ok, [Measure], distance, SensorName, NewState}
             after N ->
                 hera_com:send_unicast(Osensor, "measure", "UTF8"),
                 {ok, Measure, NewState} = get_measure(State),            
@@ -50,4 +51,4 @@ round(Number, Precision) ->
 get_rand_num() ->
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(2000)}.   
+    {ok, rand:uniform(500)}.   

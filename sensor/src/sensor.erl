@@ -136,10 +136,10 @@ loop(Id) ->
         {hera_notify, ["measure"]} ->
             sonar_sensor ! {measure};
         {hera_notify, Msg} ->
-            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            %io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop(Id);
         Msg ->
-            io:format("[SENSOR] receive ~p~n",[Msg]),
+            %io:format("[SENSOR] receive ~p~n",[Msg]),
             loop(Id)
     end.
 

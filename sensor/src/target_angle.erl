@@ -41,7 +41,7 @@ loop(SensID, Seq) ->
     {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
     hera_data:store(angle, SensName, Seq, [Angle]),
     hera_com:send(angle, Seq, SensName, [Angle]),
-    io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
+    %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
     loop(SensID, Seq + 1).
 
 find_sensors_room(Room, SensName) ->
