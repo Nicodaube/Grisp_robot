@@ -16,10 +16,9 @@ start(_Type, _Args) ->
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
-    io:format("[SENSOR] WiFi setup begin~n"),
     wifi_setup(),
     Id = persistent_term:get(id),
-    io:format("[SENSOR] Waiting for start signal ...~n"),
+    io:format("[SENSOR] Waiting for start signal ...~n~n"),
     loop(Id),
     {ok, self()}.
 
@@ -27,7 +26,7 @@ start(_Type, _Args) ->
 stop(_State) -> ok.
 
 wifi_setup() ->
-    io:format("[SENSOR] WiFi setup begin...~n"),
+    io:format("[SENSOR] WiFi setup starting...~n"),
 
     % Computing sensor id and storing it in persistent data
     {ok, Id} = get_grisp_id(),
@@ -48,24 +47,24 @@ wifi_setup() ->
             % Check if the wifi setup has been done correctly
             case IpTuple of 
                 {172,_,_,_} -> 
-                    hera_com:add_device("SERVER", {172,20,10,8}, 5000),
+                    hera_com:add_device(server, {172,20,10,8}, 5000),
                     handle_success(Id);                  
                 {192,168,_,_} -> 
                     handle_success(Id);
                 _ ->
-                    io:format("[SENSOR] WiFi setup failed:~n"),
+                    io:format("[SENSOR] WiFi setup failed:~n~n"),
                     [grisp_led:flash(L, red, 750) || L <- [1, 2]],
                     wifi_setup()
                 end;
         _ -> 
-            io:format("[SENSOR] WiFi setup failed:~n"),
+            io:format("[SENSOR] WiFi setup failed:~n~n"),
             [grisp_led:flash(L, red, 750) || L <- [1, 2]],
             wifi_setup()
     end,
     ok.
 
 handle_success(Id) ->
-    io:format("[SENSOR] WiFi setup done~n"),
+    io:format("[SENSOR] WiFi setup done~n~n"),
     [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
     ack_loop(Id).
 
@@ -86,7 +85,7 @@ get_grisp_id() ->
     {ok, SUM}.
 
 ack_loop(Id) ->
-    send_udp_message("SERVER", "Hello from " ++ integer_to_list(Id), "UTF8"),
+    send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
     receive
         {hera_notify, ["Ack", _]} ->
             io:format("[SENSOR] Received ACK from server~n"),
@@ -103,20 +102,19 @@ loop(Id) ->
     receive
 
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used devices           
-            SelfName = persistent_term:get(sensor_name),           
-            case Name of 
+            SelfName = persistent_term:get(sensor_name),
+            case list_to_atom(Name) of 
                 SelfName -> % Don't register self
                     ok;
-                _ -> 
+                OName -> 
                     io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
                     {ok, Ip} = inet:parse_address(SIp),
                     IntPort = list_to_integer(Port),
-                    hera_com:add_device(list_to_atom(Name), Ip, IntPort)
+                    hera_com:add_device(OName, Ip, IntPort)
             end,            
             loop(Id);
 
-        {hera_notify, ["Pos", Ids, Xs, Ys, RoomS]} -> % Received at config time To get all the sensors positions
-            ParsedId = list_to_integer(Ids),
+        {hera_notify, ["Pos", Ids, Xs, Ys, RoomS]} -> % Received at config time To get all the sensors positions            
             X = list_to_float(Xs),
             Y = list_to_float(Ys),
             Room = list_to_integer(RoomS),
@@ -124,22 +122,29 @@ loop(Id) ->
             hera_data:store(room, SensorName, 1, [Room]),
             hera_data:store(pos, SensorName, 1, [X, Y]),
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
-            if Id == ParsedId ->
-
-                [grisp_led:color(L, green) || L <- [1, 2]],
-                hera:start_measure(sonar_sensor, []),
-                spawn(target_angle, start_link, [Id]),
-                loop(Id);
-               true ->
-                loop(Id)
-            end;
+            loop(Id);
+        {hera_notify, ["Start", _]} ->
+            [grisp_led:color(L, green) || L <- [1, 2]],
+            spawn(target_angle, start_link, [Id]),
+            timer:sleep(300),
+            {ok, Pid} = hera:start_measure(sonar_sensor, []),
+            persistent_term:put(sonar_sensor, Pid),
+            loop(Id);
         {hera_notify, ["measure"]} ->
-            sonar_sensor ! {measure};
+            Pid = persistent_term:get(sonar_sensor, none),
+            case Pid of
+                none ->
+                    io:format("[ERROR]~n"),
+                    loop(Id);
+                _ ->
+                    Pid ! {measure},
+                    loop(Id)
+            end;
         {hera_notify, Msg} ->
-            %io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop(Id);
         Msg ->
-            %io:format("[SENSOR] receive ~p~n",[Msg]),
+            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
             loop(Id)
     end.
 
