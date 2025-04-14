@@ -123,12 +123,12 @@ loop(Id) ->
             hera_data:store(pos, SensorName, 1, [X, Y]),
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             loop(Id);
-        {hera_notify, ["Start", _]} ->
-            [grisp_led:color(L, green) || L <- [1, 2]],
+        {hera_notify, ["Start", _]} ->            
             spawn(target_angle, start_link, [Id]),
             timer:sleep(300),
             {ok, Pid} = hera:start_measure(sonar_sensor, []),
             persistent_term:put(sonar_sensor, Pid),
+            [grisp_led:color(L, green) || L <- [1, 2]],
             loop(Id);
         {hera_notify, ["measure"]} ->
             Pid = persistent_term:get(sonar_sensor, none),

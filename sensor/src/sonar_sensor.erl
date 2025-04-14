@@ -9,41 +9,39 @@ init(_Args) ->
     {ok, #{seq => 1}, #{
         name => sonar_sensor,
         iter => infinity,
-        timeout => 500
+        timeout => 300
     }}.
     
 measure(State) ->
     SensorName = persistent_term:get(sensor_name),
     {ok, N} = get_rand_num(),
     case persistent_term:get(osensor, none) of
-        none ->            
-            {ok, Measure, NewState} = get_measure(State),
-            io:format("[SONAR_SENOSR] Alone in room, measuring : ~p~n",[Measure]),            
-            {ok, [Measure], distance, SensorName, NewState};
+        none ->
+            io:format("[SONAR_SENOSR] Alone in room, measuring~n"),
+            get_measure(State, SensorName);                      
         Osensor ->
             receive
                 {measure} ->
-                    io:format("[SONAR_SENSOR] possible collision waiting for ~p~n",[N]),
-                    timer:sleep(N div 2),
-                    {ok, Measure, NewState} = get_measure(State),            
-                    {ok, [Measure], distance, SensorName, NewState}
-            after N ->                
+                    io:format("[SONAR_SENSOR] possible collision, waiting for ~pms~n",[N]),
+                    timer:sleep(N div 2 + 50),
+                    get_measure(State, SensorName)            
+            after N + 50 ->
+                io:format("[SONAR_SENOSR] Timeout~n"),                
                 hera_com:send_unicast(Osensor, "measure", "UTF8"),
-                {ok, Measure, NewState} = get_measure(State),
-                io:format("[SONAR_SENOSR] Timeout, measuring : ~p~n",[Measure]),            
-                {ok, [Measure], distance, SensorName, NewState}
+                get_measure(State, SensorName)
             end
         end.            
             
 
-get_measure(State) ->
+get_measure(State, SensorName) ->
     Seq = maps:get(seq, State, 1),
     Dist_inch = pmod_maxsonar:get(),
     Dist_cm = Dist_inch * 2.54,
-    R_Dist_cm = round(Dist_cm, 4),    
+    Measure = round(Dist_cm, 4),    
     %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, R_Dist_cm]),
+    hera_data:store(distance, SensorName, Seq, [Measure]),
     NewState = State#{seq => Seq + 1},
-    {ok, R_Dist_cm, NewState}.
+    {ok, [Measure], distance, SensorName, NewState}.
     
 
 round(Number, Precision) ->
@@ -53,4 +51,4 @@ round(Number, Precision) ->
 get_rand_num() ->
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(100)}.   
+    {ok, rand:uniform(150)}.   
