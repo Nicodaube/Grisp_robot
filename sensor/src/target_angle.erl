@@ -16,10 +16,10 @@ setup() ->
     timer:sleep(1500),
     SensName = persistent_term:get(sensor_name),
     case hera_data:get(room, SensName) of
-      [{_, _, _, [Room]}] ->
-        case find_sensors_room(Room, SensName) of 
+      [{_, _, _, [Room]}] ->        
+        case find_sensors_room(Room) of 
             [H|_] ->
-                io:format("[TARGET_ANGLE] Other sensor is : ~p~n",[H]),
+                io:format("[TARGET_ANGLE] Other sensor is : ~p~n", [H]),
                 persistent_term:put(osensor, H),
                 {ok, Room};
             _ ->
@@ -44,13 +44,11 @@ loop(SensID, Seq) ->
     %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
     loop(SensID, Seq + 1).
 
-find_sensors_room(Room, SensName) ->
+find_sensors_room(Room) ->
     Devices = persistent_term:get(devices),
     lists:foldl(
         fun({Name, _Ip, _Port}, Acc) ->
             case Name of
-                SensName ->
-                    Acc;
                 _ ->
                     case hera_data:get(room, Name) of
                         [{_Node, _Seq, _Ts, [ORoom]}] when Room =:= ORoom ->

@@ -5,7 +5,7 @@
 -export([init/1, measure/1]).
 
 init(_Args) ->
-    io:format("[SONAR_SENSOR] Starting measurements~n"),
+    io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     {ok, #{seq => 1}, #{
         name => sonar_sensor,
         iter => infinity,
@@ -16,19 +16,21 @@ measure(State) ->
     SensorName = persistent_term:get(sensor_name),
     {ok, N} = get_rand_num(),
     case persistent_term:get(osensor, none) of
-        none ->
-            {ok, Measure, NewState} = get_measure(State),            
+        none ->            
+            {ok, Measure, NewState} = get_measure(State),
+            io:format("[SONAR_SENOSR] Alone in room, measuring : ~p~n",[Measure]),            
             {ok, [Measure], distance, SensorName, NewState};
         Osensor ->
             receive
                 {measure} ->
-                    io:format("[SONAR_SENSO] possible collision waiting for ~p~n",[N]),
+                    io:format("[SONAR_SENSOR] possible collision waiting for ~p~n",[N]),
                     timer:sleep(N div 2),
                     {ok, Measure, NewState} = get_measure(State),            
                     {ok, [Measure], distance, SensorName, NewState}
-            after N ->
+            after N ->                
                 hera_com:send_unicast(Osensor, "measure", "UTF8"),
-                {ok, Measure, NewState} = get_measure(State),            
+                {ok, Measure, NewState} = get_measure(State),
+                io:format("[SONAR_SENOSR] Timeout, measuring : ~p~n",[Measure]),            
                 {ok, [Measure], distance, SensorName, NewState}
             end
         end.            
@@ -51,4 +53,4 @@ round(Number, Precision) ->
 get_rand_num() ->
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(500)}.   
+    {ok, rand:uniform(100)}.   
