@@ -28,7 +28,7 @@ class Server:
                         id = int(data[11:])
                         self.sensors[id] = Sensor(addr[0], addr[1], id)
                         print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
-                        self.send("Ack , SERVER", "uni", id)
+                        self.send("Ack , server", "uni", id)
                     elif data[:8] == "Distance":
                         self.sensors[addr[0]].update_data(float(data[9:]))
                 except : 
@@ -73,6 +73,8 @@ class Server:
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
+        message = "Start " + self.HOST
+        self.send(message, "brd")
 
 if __name__ == '__main__' :
     serv = Server()
