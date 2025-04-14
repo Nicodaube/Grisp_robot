@@ -9,7 +9,7 @@
   0},
  {<<"hera">>,
   {git,"https://github.com/Nicodaube/hera",
-       {ref,"f0041a7b287c481ee7d682aac34ded574c2669b8"}},
+       {ref,"1aa61ff54c0d480afca4a9b3e870b57b379f3d59"}},
   0},
  {<<"hera_synchronization">>,
   {git,"https://github.com/sebkm/hera_synchronization",

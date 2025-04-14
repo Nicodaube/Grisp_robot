@@ -9,10 +9,19 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
+    started = False
 
     def __init__(self):
         self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
         self.rcvServer.start()
+        self.pinger = threading.Thread(target=self.ping_server, daemon=True)
+        self.pinger.start()
+
+    def ping_server(self):
+        while not self.started : 
+            message = "ping : server , " + self.HOST + " , " + str(self.PORT)
+            self.send(message, "brd")
+            time.sleep(3)
 
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
@@ -65,6 +74,7 @@ class Server:
         self.sensors.get(id).update_pos(room, x, y)
         
     def send_pos(self):
+        self.started = True
         for sensor in self.sensors.values() :
             if sensor.x != -1 : 
                 message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)

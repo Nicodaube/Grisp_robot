@@ -35,19 +35,41 @@ wifi_setup() ->
 
 await_connection(Id) ->
     io:format("[SENSOR] WiFi setup starting...~n"),
-    receive
+    receive        
         {hera_notify, "connected"} ->
-            handle_success(Id)
+            io:format("[SENSOR] WiFi setup done~n~n"),
+            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            discover_server(Id)
     after 18000 ->
         io:format("[SENSOR] WiFi setup failed:~n~n"),
         [grisp_led:flash(L, red, 750) || L <- [1, 2]],
         await_connection(Id)
     end.
 
-handle_success(Id) ->
-    io:format("[SENSOR] WiFi setup done~n~n"),
-    [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
-    ack_loop(Id).
+discover_server(Id) ->
+    receive
+        {hera_notify, ["ping", Name, SIp, Port]} ->
+            {ok, Ip} = inet:parse_address(SIp),
+            IntPort = list_to_integer(Port),
+            hera_com:add_device(list_to_atom(Name), Ip, IntPort),
+            ack_loop(Id)
+    after 9000 ->
+        io:format("[SENSOR] no ping from server~n"),
+        discover_server(Id)
+    end.
+
+ack_loop(Id) ->
+    send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
+    receive
+        {hera_notify, ["Ack", _]} ->
+            io:format("[SENSOR] Received ACK from server~n"),
+            ok
+    after 5000 ->
+        ack_loop(Id)
+    end.
+
+send_udp_message(Name, Message, Type) ->
+    hera_com:send_unicast(Name, Message, Type).
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -65,23 +87,8 @@ get_grisp_id() ->
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
 
-ack_loop(Id) ->
-    send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
-    receive
-        {hera_notify, ["Ack", _]} ->
-            io:format("[SENSOR] Received ACK from server~n"),
-            ok
-
-    after 10000 ->
-        ack_loop(Id)
-    end.
-
-send_udp_message(Name, Message, Type) ->
-    hera_com:send_unicast(Name, Message, Type).
-
 loop(Id) ->
     receive
-
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used devices           
             SelfName = persistent_term:get(sensor_name),
             case list_to_atom(Name) of 
@@ -115,12 +122,14 @@ loop(Id) ->
             Pid = persistent_term:get(sonar_sensor, none),
             case Pid of
                 none ->
-                    io:format("[ERROR]~n"),
+                    io:format("[ERROR] Sonar sensor has not spawned~n"),
                     loop(Id);
                 _ ->
                     Pid ! {measure},
                     loop(Id)
             end;
+        {hera_notify, ["ping", _, _, _]} ->
+            loop(Id);
         {hera_notify, Msg} ->
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop(Id);
