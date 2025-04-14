@@ -26,42 +26,23 @@ start(_Type, _Args) ->
 stop(_State) -> ok.
 
 wifi_setup() ->
-    io:format("[SENSOR] WiFi setup starting...~n"),
-
     % Computing sensor id and storing it in persistent data
     {ok, Id} = get_grisp_id(),
     io:format("[SENSOR] sensor id :~p~n",[Id]),
     persistent_term:put(sensor_name, list_to_atom("sensor_" ++ integer_to_list(Id))),
     persistent_term:put(id, Id),
-    
-    % Waiting for IP negociation
-    timer:sleep(18000),
+    await_connection(Id).
 
-    % Checking if IP was aquired
-    case inet:getifaddrs() of
-        {ok, List} ->
-            % Parse Ip from inet return
-            {_, Parameters} = lists:nth(3, List),
-            {_, IpTuple} = lists:nth(4, Parameters),
-
-            % Check if the wifi setup has been done correctly
-            case IpTuple of 
-                {172,_,_,_} -> 
-                    hera_com:add_device(server, {172,20,10,8}, 5000),
-                    handle_success(Id);                  
-                {192,168,_,_} -> 
-                    handle_success(Id);
-                _ ->
-                    io:format("[SENSOR] WiFi setup failed:~n~n"),
-                    [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-                    wifi_setup()
-                end;
-        _ -> 
-            io:format("[SENSOR] WiFi setup failed:~n~n"),
-            [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-            wifi_setup()
-    end,
-    ok.
+await_connection(Id) ->
+    io:format("[SENSOR] WiFi setup starting...~n"),
+    receive
+        {hera_notify, "connected"} ->
+            handle_success(Id)
+    after 18000 ->
+        io:format("[SENSOR] WiFi setup failed:~n~n"),
+        [grisp_led:flash(L, red, 750) || L <- [1, 2]],
+        await_connection(Id)
+    end.
 
 handle_success(Id) ->
     io:format("[SENSOR] WiFi setup done~n~n"),
