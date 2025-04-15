@@ -1,9 +1,4 @@
-<div style="display: flex; justify-content: space-evenly; align-items: center; width: 100%; height: 120px;">
-  <img src="./Wiki_images/img/grisp.png" width="100" />
-  <img src="./Wiki_images/img/strit.png" width="100" />
-  <img src="./Wiki_images/img/uclouvain.png" width="100" />
-  <img src="./Wiki_images/img/epl.png" width="100" />
-</div>
+<img src="./Wiki_images/img/banderole.png" width="800" />
 
 # GRiSP2 Robot
 
