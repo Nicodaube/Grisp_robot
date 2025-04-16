@@ -87,6 +87,13 @@ get_grisp_id() ->
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
 
+reset_data() ->
+    Keys = persistent_term:get_keys(),
+    lists:foreach(fun persistent_term:erase/1, Keys),
+    hera_data:reset(),
+    io:format("[SENSOR] Data resetted").
+    
+
 loop(Id) ->
     receive
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used devices           
@@ -128,6 +135,13 @@ loop(Id) ->
                     Pid ! {measure},
                     loop(Id)
             end;
+        {hera_notify, ["Exit"]} ->
+            reset_data(),
+            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            persistent_term:put(id, Id),
+            supervisor:terminate_child(hera_measure_sup, sonar_sensor),
+            supervisor:delete_child(hera_measure_sup, sonar_sensor),            
+            discover_server(Id);
         {hera_notify, ["ping", _, _, _]} ->
             loop(Id);
         {hera_notify, Msg} ->
