@@ -1,6 +1,6 @@
 -module(main_loop).
 
--export([robot_init/1, modify_frequency/1]).
+-export([robot_init/2, modify_frequency/1]).
 
 -define(RAD_TO_DEG, 180.0/math:pi()). % Conversion factor from radians to degrees
 
@@ -13,7 +13,7 @@
 %% Robot Initialization
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-robot_init(Hera_pid) ->
+robot_init(Hera_pid, _Role) ->
 
     % Set maximum process priority for real-time critical tasks
     process_flag(priority, max),
@@ -40,6 +40,7 @@ robot_init(Hera_pid) ->
     P0 = mat:matrix([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1]]),
 
     % Open I2C bus for communication with external devices (ESP32, etc.)
+    io:format("[Robot] Opening I2C bus...~n"),
     I2Cbus = grisp_i2c:open(i2c1),
 
     % Initialize PID controllers
@@ -132,7 +133,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
     [Th_Kalman, _W_Kalman, D_Kalman] = mat:to_array(X1), % Extract the angle (Th_Kalman) and distance from the state matrix.
     Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
 
-    io:format("[Main Loop] Sonar: ~p cm | Kalman Distance Estimate: ~p cm~n", [Filtered_Distance, D_Kalman]),
+    io:format("[Robot] Sonar: ~p cm | Kalman Distance Estimate: ~p cm~n", [Filtered_Distance, D_Kalman]),
 
     % Complementary filter fusion: gyroscope + accelerometer (fast)
     K = 1.25 / (1.25 + (1.0 / Mean_Freq)), % Compute the weighting factor.

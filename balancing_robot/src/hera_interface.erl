@@ -18,14 +18,34 @@ init(_Args) ->
     % Capture system start time [ms]
     T0 = erlang:system_time() / 1.0e6,
     
-    % Spawn the robot control process (main_loop:robot_init/1)
-    Robot_Pid = spawn(main_loop, robot_init, [self()]),
-    
+    {ok, Grisp_Id} =  helper_module:get_grisp_id(),
+
+    % Print the role of the robot to the console
+    io:format("[Hera_interface] Role of the robot: ~p.~n", [Grisp_Id]),
+    io:format("[Hera_interface] Pid of the Hera interface: ~p.~n", [self()]),
+
+    Role = case Grisp_Id of
+        0 -> main;
+        1 -> front_left;
+        2 -> front_right;
+        _ -> unknown_role
+    end,
+
+    % Spawn the robot process based on its role
+    Robot_Pid = case Role of
+        main ->
+            spawn(main_loop, robot_init, [self(), main]);
+        front_left ->
+            spawn(main_loop, robot_init, [self(), front_left]);
+        front_right ->
+            spawn(main_loop, robot_init, [self(), front_right]);
+        _ ->
+            erlang:error({unknown_role, Grisp_Id})
+    end,
+
     % Define the names and number of fields for logged data
     Names = "T,Freq,Gy,Acc,CtrlByte,AngleAccelerometer,AngleKalman,AngleComplem,Vref,Select,Adv_Ref,Turn_Ref,Speed",
     Len = 13,
-
-    io:format("[Hera] Pid of the Hera interface: ~p.~n", [self()]),
     
     % Set LEDs to yellow to indicate ready state
     grisp_led:color(1, {1, 1, 0}),

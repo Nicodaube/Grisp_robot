@@ -5,7 +5,7 @@
     speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1,
     enforce_loop_frequency/1, flicker_led/2, manage_logging_transition/3,
     update_log_list/3, handle_incoming_messages/1, robot_state_transition/5,
-    robot_output_state/1
+    robot_output_state/1, get_grisp_id/0
 ]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -372,6 +372,27 @@ robot_output_state(State) ->
             {1, 0, 0, 0}  % Power is on, no freeze, no extension, robot is not upright
     end.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Grisps identification
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%% @doc Reads the jumper GPIO pins to identify the GRiSP board.
+%% @return - A tuple containing the GRiSP ID based on the jumper settings.
+get_grisp_id() ->
+    %% Jumper GPIO pins
+    JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
+    JMP2 = grisp_gpio:open(jumper_2, #{mode => input}),
+    JMP3 = grisp_gpio:open(jumper_3, #{mode => input}),
+    JMP4 = grisp_gpio:open(jumper_4, #{mode => input}),
+    JMP5 = grisp_gpio:open(jumper_5, #{mode => input}),
 
+    %% Read the jumper GPIO pins
+    V1 = grisp_gpio:get(JMP1),
+    V2 = grisp_gpio:get(JMP2),
+    V3 = grisp_gpio:get(JMP3),
+    V4 = grisp_gpio:get(JMP4),
+    V5 = grisp_gpio:get(JMP5),
 
+    % Convert the jumper values to a single byte
+    SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
+    {ok, SUM}.
