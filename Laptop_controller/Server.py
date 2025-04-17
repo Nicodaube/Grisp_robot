@@ -19,9 +19,10 @@ class Server:
 
     def ping_server(self):
         while not self.started : 
+            time.sleep(3)
             message = "ping : server , " + self.HOST + " , " + str(self.PORT)
             self.send(message, "brd")
-            time.sleep(3)
+            
 
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:

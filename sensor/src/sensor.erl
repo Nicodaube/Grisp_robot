@@ -49,6 +49,7 @@ await_connection(Id) ->
     end.
 
 discover_server(Id) ->
+    io:format("[SENSOR] Waiting for ping from server~n"),
     receive
         {hera_notify, ["ping", Name, SIp, Port]} -> % Received upon server ping reception
             {ok, Ip} = inet:parse_address(SIp),
@@ -86,6 +87,12 @@ get_grisp_id() ->
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
 
+reset_data() ->
+    persistent_term:erase(osensor),
+    persistent_term:erase(sonar_sensor),
+    hera_data:reset(),
+    io:format("[SENSOR] Data resetted~n~n").
+    
 %============================================================================================================================================
 %============================================================== LOOP ========================================================================
 %============================================================================================================================================
@@ -131,6 +138,14 @@ loop(Id) ->
                     Pid ! {measure},
                     loop(Id)
             end;
+        {hera_notify, ["Exit"]} ->
+            SensorID = persistent_term:get(sonar_sensor),
+            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            exit(SensorID, shutdown),
+            reset_data(),            
+            discover_server(Id),
+            io:format("[SENSOR] Waiting for start signal ...~n~n"),
+            loop(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop(Id);
         {hera_notify, Msg} ->
