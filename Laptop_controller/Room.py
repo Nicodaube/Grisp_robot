@@ -13,11 +13,20 @@ class Room:
             "T":None,
             "B":None
                     }
+        self.corners = {
+            "TL":None,
+            "TR":None,
+            "BL":None,
+            "BR":None
+        }
         self.room_num = room_num
         
     def modify_side(self, side, img, img_type):
         x, y = self.compute_pos(side)
-        self.sides[side] = Side(x, y, img, img_type)
+        if side in self.sides.keys() :            
+            self.sides[side] = Side(x, y, img, img_type)
+        else :
+            self.corners[side] = Side(x, y, img, img_type)
 
     def compute_pos(self, side):
         if side == "L":
@@ -28,6 +37,14 @@ class Room:
             side_x, side_y = self.pos[0], self.pos[1] + self.height//2
         elif side == "B":
             side_x, side_y = self.pos[0], self.pos[1] - self.height//2
+        elif side == "TL":
+            side_x, side_y = self.pos[0] - self.width//2, self.pos[1] + self.height//2
+        elif side == "TR":
+            side_x, side_y = self.pos[0] + self.width//2, self.pos[1] + self.height//2
+        elif side == "BL":
+            side_x, side_y = self.pos[0] - self.width//2, self.pos[1] - self.height//2
+        elif side == "BR":
+            side_x, side_y = self.pos[0] + self.width//2, self.pos[1] - self.height//2
 
         return side_x, side_y
 
