@@ -36,8 +36,8 @@ robot_init(Hera_pid, _Role) ->
     % Initialize Kalman filter state
     % - X0: State vector [angle, angular velocity, distance to obstacle]
     % - P0: State covariance matrix
-    X0 = mat:matrix([[0], [0], [0]]),
-    P0 = mat:matrix([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1]]),
+    X0 = mat:matrix([[0], [0]]),
+    P0 = mat:matrix([[0.1, 0], [0, 0.1]]),
 
     % Open I2C bus for communication with external devices (ESP32, etc.)
     io:format("[Robot] Opening I2C bus...~n"),
@@ -49,11 +49,9 @@ robot_init(Hera_pid, _Role) ->
     % - Pid_Obstacle_Avoidance: PI controller for slowing down when detecting obstacles
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-    Pid_Obstacle_Avoidance = spawn(pid_controller, pid_init, [-0.06, -0.02, 0.0, -1, 60.0, 0.0]),
 
     io:format("[Robot] Pid of the speed controller: ~p~n", [Pid_Speed]),
     io:format("[Robot] Pid of the stability controller: ~p~n", [Pid_Stability]),
-    io:format("[Robot] Pid of the obstacle avoidance controller: ~p~n", [Pid_Obstacle_Avoidance]),
     io:format("[Robot] Starting movement of the robot.~n"),
 
     % Launch main control loop with initial state
@@ -64,7 +62,7 @@ robot_init(Hera_pid, _Role) ->
         I2Cbus,                   % I2C communication bus
         {0, T0, []},               % Logging: counter, end time, empty log list
         {Gy0, 0.0, 0.0},           % Gyroscope offset, complementary filter initial angle/rate
-        {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, % PID controllers
+        {Pid_Speed, Pid_Stability}, % PID controllers
         {0.0, 0.0},                % Initial advance and turning velocities [cm/s, deg/s]
         {0, 0, 200.0, T0}          % Loop frequency tracking {N, freq, mean_freq, time_end}
     ).
@@ -90,7 +88,7 @@ robot_init(Hera_pid, _Role) ->
 robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
     I2Cbus, {Logging, Log_End, Log_List},
     {Gy0, Angle_Complem, Angle_Rate},
-    {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance},
+    {Pid_Speed, Pid_Stability},
     {Adv_V_Ref, Turn_V_Ref},
     {N, Freq, Mean_Freq, T_End}) ->
 
@@ -103,10 +101,6 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     [Gy, Ax, Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
-    Distance_Sonar_inch = pmod_maxsonar:get(),
-    Distance_Sonar_cm = helper_module:round(Distance_Sonar_inch * ?INCH_TO_CM, 4),
-
-    Filtered_Distance = distance_filtering(Distance_Sonar_cm, 600.0),
 
     % Read data from ESP32 (wheel speeds, control flags)
     [<<SL1, SL2, SR1, SR2, CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
@@ -129,11 +123,9 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
     Angle_Accelerometer = math:atan(Az / (-Ax)) * ?RAD_TO_DEG,
 
     % Kalman Filter fusion: accelerometer + gyroscope + sonar distance
-    {X1, P1} = helper_module:kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0, Filtered_Distance),
-    [Th_Kalman, _W_Kalman, D_Kalman] = mat:to_array(X1), % Extract the angle (Th_Kalman) and distance from the state matrix.
+    {X1, P1} = helper_module:kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
+    [Th_Kalman, _W_Kalman] = mat:to_array(X1), % Extract the angle (Th_Kalman) and distance from the state matrix.
     Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
-
-    io:format("[Robot] Sonar: ~p cm | Kalman Distance Estimate: ~p cm~n", [Filtered_Distance, D_Kalman]),
 
     % Complementary filter fusion: gyroscope + accelerometer (fast)
     K = 1.25 / (1.25 + (1.0 / Mean_Freq)), % Compute the weighting factor.
@@ -150,10 +142,9 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} =
         stability_engine:controller(
             {Dt, Angle, Speed},
-            {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance},
+            {Pid_Speed, Pid_Stability},
             {Adv_V_Goal, Adv_V_Ref},
-            {Turn_V_Goal, Turn_V_Ref},
-            {D_Kalman, exponential}
+            {Turn_V_Goal, Turn_V_Ref}
         ),
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -230,7 +221,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
         I2Cbus,
         {Logging_New, Log_End_New, Log_List_New},
         {Gy0, Angle_Complem_New, Angle_Rate_New},
-        {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance},
+        {Pid_Speed, Pid_Stability},
         {Adv_V_Ref_New, Turn_V_Ref_New},
         {N_New, Freq_New, Mean_Freq_New, T_End_New}
     ).
@@ -245,37 +236,3 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0},
 modify_frequency(Freq) ->
     ets:insert(variables, {"Freq_Goal", Freq}),
     ok.
-
-%% @doc Filters the distance measurement to avoid large fluctuations.
-%% This function checks the current distance against the previous distance
-%% @param Rounded_distance The current distance measurement (rounded).
-%% @param Max_Change The maximum allowable change in distance.
-%% @return The filtered distance measurement.
-distance_filtering(Rounded_distance, Max_Change) ->
-    % Retrieve the previous distance measurement from the ETS table, or default to the current distance
-    case ets:lookup(variables, "Prev_Distance") of
-        [] ->
-            % If no previous distance is stored, use the current distance
-            Prev_Distance = Rounded_distance;
-        [{_, Prev_Distance_Stored}] ->
-            Prev_Distance = Prev_Distance_Stored
-    end,
-
-    % Compute the absolute change in distance
-    Distance_Change = abs(Rounded_distance - Prev_Distance),
-
-    % Check if the change exceeds the maximum allowable threshold
-    Filtered_Distance =
-        if
-            Distance_Change > Max_Change ->
-                % If the change is too large, use the previous distance
-                Prev_Distance;
-            true ->
-                % Otherwise, use the current distance
-                Rounded_distance
-        end,
-
-    % Store the filtered distance as the new previous distance in the ETS table
-    ets:insert(variables, {"Prev_Distance", Filtered_Distance}),
-    Filtered_Distance.
-

@@ -1,6 +1,6 @@
 -module(stability_engine).
 
--export([controller/5]).
+-export([controller/4]).
 
 -define(ADV_V_MAX, 30.0).
 -define(ADV_ACCEL, 75.0).
@@ -15,27 +15,14 @@
 %% @param {Turn_V_Goal, Turn_V_Ref} - A tuple containing the goal and reference values for the turning velocity.
 %% @param {D_Kalman, Interpolation_Type} - A tuple containing the distance to the closest object and the type of interpolation used for deceleration.
 %% @return - The function returns a tuple with the updated control values for the robot.
-controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability, Pid_Obstacle_Avoidance}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}, {D_Kalman, Interpolation_Type}) ->
+controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}) ->
     
-    % ==========================
-    % Obstacle avoidance
-    % ==========================
-
-    % Compute the Advance Velocity Goal based on the distance to the closest object
-    Adv_V_Goal_Adapted = obstacle_avoidance:compute_target_speed(Adv_V_Goal, D_Kalman, Interpolation_Type),
-    
-    % Update Obstacle Avoidance PID
-    Obstacle_Adjustment = run_pid(Pid_Obstacle_Avoidance, Adv_V_Goal_Adapted, Speed),
-
-    % Compute the new Advance Velocity Reference
-    Adv_V_Ref_Adjusted = Adv_V_Ref + Obstacle_Adjustment,
-
     % ==========================
     % Saturate Advance and Turn Velocities
     % ==========================
 
     % Compute the new Advance Velocity Reference
-    Adv_V_Ref_New = saturation_velocity(Adv_V_Goal, Adv_V_Ref_Adjusted, Dt, ?ADV_ACCEL, ?ADV_V_MAX),
+    Adv_V_Ref_New = saturation_velocity(Adv_V_Goal, Adv_V_Ref, Dt, ?ADV_ACCEL, ?ADV_V_MAX),
     Turn_V_Ref_New = saturation_velocity(Turn_V_Goal, Turn_V_Ref, Dt, ?TURN_ACCEL, ?TURN_V_MAX),
 
     % ==========================

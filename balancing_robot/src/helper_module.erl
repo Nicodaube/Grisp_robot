@@ -54,48 +54,43 @@ calibrate() ->
 %% @param {Dt, Ax, Az, Gy, Gy0, X0, P0, D_sonar} - A tuple containing the time delta (Dt), accelerometer readings (Ax, Az),
 %%   gyroscope readings (Gy, Gy0), initial state (X0), initial covariance (P0), and sonar distance (D_sonar).
 %% @return - The updated state and covariance matrix after applying the Kalman filter.
-kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0, D_sonar) ->
+kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
     % Measurement noise covariance matrix (confidence in sensors)
-    R = mat:matrix([[3.0, 0.0, 0.0],
-                    [0.0, 3.0e-6, 0.0],
-                    [0.0, 0.0, 25.0]]),
+    R = mat:matrix([[3.0, 0.0],
+                    [0.0, 3.0e-6]]),
 
     % Process noise covariance matrix (confidence in model prediction)
-    Q = mat:matrix([[3.0e-5, 0.0, 0.0],
-                    [0.0, 10.0, 0.0],
-                    [0.0, 0.0, 100.0]]),
+    Q = mat:matrix([[3.0e-5, 0.0],
+                    [0.0, 10.0]]),
 
     % Predict next state
     F = fun(X) ->
-            [Th, W, D] = mat:to_array(X),
-            mat:matrix([[Th + Dt * W], [W], [D]])
+            [Th, W] = mat:to_array(X),
+            mat:matrix([[Th + Dt * W], [W]])
         end,
 
     % Jacobian of the prediction function
     Jf = fun(_) ->
-            mat:matrix([[1, Dt, 0],
-                        [0, 1, 0],
-                        [0, 0, 1]])
+            mat:matrix([[1, Dt],
+                        [0, 1]])
          end,
 
     % Measurement function: maps internal state to expected measurements
     H = fun(X) ->
-            [Th, W, D] = mat:to_array(X),
-            mat:matrix([[Th], [W], [D]])
+            [Th, W] = mat:to_array(X),
+            mat:matrix([[Th], [W]])
         end,
 
     % Jacobian of the measurement function
     Jh = fun(_) ->
-            mat:matrix([[1, 0, 0],
-                        [0, 1, 0],
-                        [0, 0, 1]])
+            mat:matrix([[1, 0],
+                        [0, 1]])
          end,
 
     % Build measurement vector
     Z = mat:matrix([
         [math:atan(Az / (-Ax))],
-        [(Gy - Gy0) * ?DEG_TO_RAD],
-        [D_sonar]
+        [(Gy - Gy0) * ?DEG_TO_RAD]
     ]),
 
     kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z).
