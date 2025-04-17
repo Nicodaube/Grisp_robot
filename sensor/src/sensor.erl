@@ -47,6 +47,7 @@ await_connection(Id) ->
     end.
 
 discover_server(Id) ->
+    io:format("[SENSOR] Waiting for ping from server~n"),
     receive
         {hera_notify, ["ping", Name, SIp, Port]} ->
             {ok, Ip} = inet:parse_address(SIp),
@@ -91,7 +92,7 @@ reset_data() ->
     persistent_term:erase(osensor),
     persistent_term:erase(sonar_sensor),
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n").
+    io:format("[SENSOR] Data resetted~n~n").
     
 
 loop(Id) ->
@@ -140,7 +141,9 @@ loop(Id) ->
             [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
             exit(SensorID, shutdown),
             reset_data(),            
-            discover_server(Id);
+            discover_server(Id),
+            io:format("[SENSOR] Waiting for start signal ...~n~n"),
+            loop(Id);
         {hera_notify, ["ping", _, _, _]} ->
             loop(Id);
         {hera_notify, Msg} ->
