@@ -6,7 +6,9 @@
 % Callbacks
 -export([start/2, stop/1]).
 
-%--- Callbacks -----------------------------------------------------------------
+%============================================================================================================================================
+%========================================================= CONFIG SECTION ===================================================================
+%============================================================================================================================================
 
 % @private
 start(_Type, _Args) -> 
@@ -36,7 +38,7 @@ wifi_setup() ->
 await_connection(Id) ->
     io:format("[SENSOR] WiFi setup starting...~n"),
     receive        
-        {hera_notify, "connected"} ->
+        {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
             io:format("[SENSOR] WiFi setup done~n~n"),
             [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
             discover_server(Id)
@@ -49,7 +51,7 @@ await_connection(Id) ->
 discover_server(Id) ->
     io:format("[SENSOR] Waiting for ping from server~n"),
     receive
-        {hera_notify, ["ping", Name, SIp, Port]} ->
+        {hera_notify, ["ping", Name, SIp, Port]} -> % Received upon server ping reception
             {ok, Ip} = inet:parse_address(SIp),
             IntPort = list_to_integer(Port),
             hera_com:add_device(list_to_atom(Name), Ip, IntPort),
@@ -62,15 +64,12 @@ discover_server(Id) ->
 ack_loop(Id) ->
     send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
     receive
-        {hera_notify, ["Ack", _]} ->
+        {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
             io:format("[SENSOR] Received ACK from server~n"),
             ok
     after 5000 ->
         ack_loop(Id)
     end.
-
-send_udp_message(Name, Message, Type) ->
-    hera_com:send_unicast(Name, Message, Type).
 
 get_grisp_id() ->
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
@@ -94,6 +93,9 @@ reset_data() ->
     hera_data:reset(),
     io:format("[SENSOR] Data resetted~n~n").
     
+%============================================================================================================================================
+%============================================================== LOOP ========================================================================
+%============================================================================================================================================
 
 loop(Id) ->
     receive
@@ -119,14 +121,14 @@ loop(Id) ->
             hera_data:store(pos, SensorName, 1, [X, Y]),
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             loop(Id);
-        {hera_notify, ["Start", _]} ->            
+        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             spawn(target_angle, start_link, [Id]),
             timer:sleep(300),
             {ok, Pid} = hera:start_measure(sonar_sensor, []),
             persistent_term:put(sonar_sensor, Pid),
             [grisp_led:color(L, green) || L <- [1, 2]],
             loop(Id);
-        {hera_notify, ["measure"]} ->
+        {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
             Pid = persistent_term:get(sonar_sensor, none),
             case Pid of
                 none ->
@@ -144,7 +146,7 @@ loop(Id) ->
             discover_server(Id),
             io:format("[SENSOR] Waiting for start signal ...~n~n"),
             loop(Id);
-        {hera_notify, ["ping", _, _, _]} ->
+        {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop(Id);
         {hera_notify, Msg} ->
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
@@ -155,5 +157,9 @@ loop(Id) ->
     end.
 
 
+%============================================================================================================================================
+%======================================================== HELPER FUNCTIONS ==================================================================
+%============================================================================================================================================
 
-
+send_udp_message(Name, Message, Type) ->
+    hera_com:send_unicast(Name, Message, Type).

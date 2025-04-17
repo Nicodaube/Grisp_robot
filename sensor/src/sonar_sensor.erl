@@ -16,16 +16,16 @@ measure(State) ->
     SensorName = persistent_term:get(sensor_name),
     {ok, N} = get_rand_num(),
     case persistent_term:get(osensor, none) of
-        none ->
+        none -> % Is alone in a room
             io:format("[SONAR_SENOSR] Alone in room, measuring~n"),
             get_measure(State, SensorName);                      
         Osensor ->
             receive
-                {measure} ->
+                {measure} -> % Received when an other sensor wants to measure
                     io:format("[SONAR_SENSOR] possible collision, waiting for ~pms~n",[N]),
                     timer:sleep(N div 2 + 50),
                     get_measure(State, SensorName)            
-            after N + 50 ->
+            after N + 50 -> % Timeout, can measure
                 io:format("[SONAR_SENOSR] Timeout~n"),                
                 hera_com:send_unicast(Osensor, "measure", "UTF8"),
                 get_measure(State, SensorName)

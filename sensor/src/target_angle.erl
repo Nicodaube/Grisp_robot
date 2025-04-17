@@ -18,11 +18,11 @@ setup() ->
     case hera_data:get(room, SensName) of
       [{_, _, _, [Room]}] ->        
         case find_sensors_room(Room) of 
-            [H|_] ->
+            [H|_] -> % Multiple sensors in a room
                 io:format("[TARGET_ANGLE] Other sensor is : ~p~n", [H]),
                 persistent_term:put(osensor, H),
                 {ok, Room};
-            _ ->
+            _ -> % No other sensor
                 io:format("[TARGET_ANGLE] No other sensor in the room~n"),
                 stop
         end;
@@ -47,11 +47,11 @@ loop(SensID, Seq) ->
 find_sensors_room(Room) ->
     Devices = persistent_term:get(devices),
     lists:foldl(
-        fun({Name, _Ip, _Port}, Acc) ->
+        fun({Name, _, _}, Acc) ->
             case Name of
                 _ ->
                     case hera_data:get(room, Name) of
-                        [{_Node, _Seq, _Ts, [ORoom]}] when Room =:= ORoom ->
+                        [{_, _, _, [ORoom]}] when Room =:= ORoom ->
                                 %io:format("[TARGET_ANGLE] Sens : ~p is in the same room as this sensor~n", [Name]),
                                 [Name | Acc];
                         _ ->
