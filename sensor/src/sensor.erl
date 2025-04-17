@@ -88,10 +88,10 @@ get_grisp_id() ->
     {ok, SUM}.
 
 reset_data() ->
-    Keys = persistent_term:get_keys(),
-    lists:foreach(fun persistent_term:erase/1, Keys),
+    persistent_term:erase(osensor),
+    persistent_term:erase(sonar_sensor),
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted").
+    io:format("[SENSOR] Data resetted~n").
     
 
 loop(Id) ->
@@ -136,11 +136,10 @@ loop(Id) ->
                     loop(Id)
             end;
         {hera_notify, ["Exit"]} ->
-            reset_data(),
+            SensorID = persistent_term:get(sonar_sensor),
             [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
-            persistent_term:put(id, Id),
-            supervisor:terminate_child(hera_measure_sup, sonar_sensor),
-            supervisor:delete_child(hera_measure_sup, sonar_sensor),            
+            exit(SensorID, shutdown),
+            reset_data(),            
             discover_server(Id);
         {hera_notify, ["ping", _, _, _]} ->
             loop(Id);
