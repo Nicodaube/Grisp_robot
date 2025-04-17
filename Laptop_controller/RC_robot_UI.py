@@ -172,6 +172,12 @@ class User_interface:
                     self.in_popup = True
                     self.temp_origin = name
                     self.create_choice_popup()
+            for corner in ["TL", "TR", "BL", "BR"]:
+                name = "plus_" + corner + "_" + str(room)
+                if self.is_click_image(name, event) :
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_sensor_popup()
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
@@ -331,6 +337,9 @@ class User_interface:
             else:
                 x, y = room.compute_pos(side)
                 self.draw_door(x, y)
+        for corner in ["TL", "TR", "BL", "BR"]:
+            self.load_image(room.room_num, room.corners[corner], corner)
+            self.draw_image(room.corners[corner].type + "_" + corner + "_" + str(room.room_num), room.corners[corner].pos[0], room.corners[corner].pos[1])
 
     def draw_sensor(self):
         room_origin = int(self.temp_origin[7])
@@ -712,6 +721,7 @@ class User_interface:
 
     def add_sides(self, room):
         sides = ["L", "R", "T", "B"]
+        corners = ["TL", "TR", "BL", "BR"]
         room_origin = int(self.temp_origin[7])
         side_origin = self.temp_origin[5]
 
@@ -733,6 +743,8 @@ class User_interface:
 
         for side in sides:
             room.modify_side(side, "./img/plus.png", "plus")
+        for corner in corners:
+            room.modify_side(corner, "./img/plus.png", "plus")
 
     def get_new_grid(self):
         leftmost_room = None

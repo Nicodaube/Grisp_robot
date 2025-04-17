@@ -13,21 +13,39 @@ class Room:
             "T":None,
             "B":None
                     }
+        self.corners = {
+            "TL":None,
+            "TR":None,
+            "BL":None,
+            "BR":None
+        }
         self.room_num = room_num
         
     def modify_side(self, side, img, img_type):
         x, y = self.compute_pos(side)
-        self.sides[side] = Side(x, y, img, img_type)
+        if side in self.sides.keys() :            
+            self.sides[side] = Side(x, y, img, img_type)
+        else :
+            self.corners[side] = Side(x, y, img, img_type)
 
     def compute_pos(self, side):
-        if side == "L":
-            side_x, side_y = self.pos[0] - self.width//2, self.pos[1]  
-        elif side == "R":
-            side_x, side_y = self.pos[0] + self.width//2, self.pos[1]  
-        elif side == "T":
-            side_x, side_y = self.pos[0], self.pos[1] + self.height//2
-        elif side == "B":
-            side_x, side_y = self.pos[0], self.pos[1] - self.height//2
+        match side :
+            case "L":
+                side_x, side_y = self.pos[0] - self.width//2, self.pos[1]  
+            case "R":
+                side_x, side_y = self.pos[0] + self.width//2, self.pos[1]  
+            case "T":
+                side_x, side_y = self.pos[0], self.pos[1] + self.height//2
+            case "B":
+                side_x, side_y = self.pos[0], self.pos[1] - self.height//2
+            case "TL":
+                side_x, side_y = self.pos[0] - self.width//2, self.pos[1] + self.height//2
+            case "TR":
+                side_x, side_y = self.pos[0] + self.width//2, self.pos[1] + self.height//2
+            case "BL":
+                side_x, side_y = self.pos[0] - self.width//2, self.pos[1] - self.height//2
+            case "BR":
+                side_x, side_y = self.pos[0] + self.width//2, self.pos[1] - self.height//2
 
         return side_x, side_y
 
