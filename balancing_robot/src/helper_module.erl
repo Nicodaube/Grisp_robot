@@ -1,7 +1,7 @@
 -module(helper_module).
 
 -export([
-    round/2, calibrate/0, kalman_angle/8, complem_angle/1, select_angle/3,
+    round/2, calibrate/0, kalman_angle/7, complem_angle/1, select_angle/3,
     speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1,
     enforce_loop_frequency/1, flicker_led/2, manage_logging_transition/3,
     update_log_list/3, handle_incoming_messages/1, robot_state_transition/5,
