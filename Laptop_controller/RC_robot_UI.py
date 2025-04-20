@@ -201,7 +201,7 @@ class User_interface:
 
         if robot_room != None:
             self.in_popup = True
-            x, y = self.get_sensor_pos(event.pos[0], event.pos[1])
+            x, y = self.get_real_pos(event.pos[0], event.pos[1])
             self.robot = Robot(event.pos, (x,y), 0, robot_room)
             self.create_robot_popup()
 
@@ -253,7 +253,7 @@ class User_interface:
 
                 ix, iy = room.compute_pos(side)
                 
-                x, y = self.get_sensor_pos(ix, iy)
+                x, y = self.get_real_pos(ix, iy)
                 self.server.update_sens(id, room, x, y)
                 self.draw_sensor()
                 self.temp_origin = None
@@ -876,7 +876,7 @@ class User_interface:
 
         self.room_grid = ((x_min, x_max), (y_min, y_max))
 
-    def get_sensor_pos(self, x, y):
+    def get_real_pos(self, x, y):
         grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
