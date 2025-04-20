@@ -201,7 +201,8 @@ class User_interface:
 
         if robot_room != None:
             self.in_popup = True
-            self.robot = Robot(event.pos, 0, robot_room)
+            x, y = self.get_sensor_pos(event.pos[0], event.pos[1])
+            self.robot = Robot(event.pos, (x,y), 0, robot_room)
             self.create_robot_popup()
 
     def event_interact_popup(self, event):
@@ -234,6 +235,7 @@ class User_interface:
             self.create_room_popup()
         elif event.ui_element == self.UI_elements.get("yes"):
             self.robot.confirmed = True
+            self.server.robot = self.robot
             self.close_popup()
         elif event.ui_element == self.UI_elements.get("no"):
             self.robot = None
@@ -244,8 +246,14 @@ class User_interface:
         for id in sensors:
             if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
                 self.close_popup()
+                room = int(self.temp_origin[-1])
+                side = self.temp_origin[-3]
+
+                room = self.rooms[room]
+
+                ix, iy = room.compute_pos(side)
                 
-                room, x, y = self.get_sensor_pos()
+                x, y = self.get_sensor_pos(ix, iy)
                 self.server.update_sens(id, room, x, y)
                 self.draw_sensor()
                 self.temp_origin = None
@@ -868,18 +876,11 @@ class User_interface:
 
         self.room_grid = ((x_min, x_max), (y_min, y_max))
 
-    def get_sensor_pos(self):
-        room = int(self.temp_origin[-1])
-        side = self.temp_origin[-3]
-
-        room = self.rooms[room]
-
-        x,y = room.compute_pos(side)
-
+    def get_sensor_pos(self, x, y):
         grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
-        return int(self.temp_origin[-1]), grid_x, grid_y
+        return grid_x, grid_y
     
     def check_trajectory(self):
         if self.is_trajectory_started:

@@ -9,6 +9,7 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
+    robot = None
     started = False
 
     def __init__(self):
@@ -23,7 +24,6 @@ class Server:
             message = "ping : server , " + self.HOST + " , " + str(self.PORT)
             self.send(message, "brd")
             
-
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
             server_socket.bind((self.HOST, self.PORT))
@@ -84,6 +84,8 @@ class Server:
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
+        message = "Add_Device : robot , " + self.robot.real_pos + " , " + self.robot.room + " , " + self.robot.angle
+        self.send(message, "brd")
         message = "Start " + self.HOST
         self.send(message, "brd")
 
