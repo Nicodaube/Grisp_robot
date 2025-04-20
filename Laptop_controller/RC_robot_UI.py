@@ -14,7 +14,7 @@ class User_interface:
 
     # App General State
     WIDTH, HEIGHT = 1920, 1080 # Screen Size
-    RESIZE = 3 # Resizing factor for the rooms
+    RESIZE = 2 # Resizing factor for the rooms
     running = True
     in_popup = False
     active_popup = None
@@ -82,6 +82,9 @@ class User_interface:
         stop_img = pygame.image.load('./img/Stop_sign.png')
         stop_img = pygame.transform.scale(stop_img, (stop_img.get_width() // 10, stop_img.get_height() // 10))
 
+        robot = pygame.image.load('./img/Robot.png')
+        robot = pygame.transform.scale(robot, (robot.get_width()//4, robot.get_height()//4))
+
         plus_img = pygame.image.load('./img/plus.png')
         plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
 
@@ -117,6 +120,7 @@ class User_interface:
         self.image_dict["start_pressed"] = start_img_pressed
         self.image_dict["zoom_in"] = zoom_in
         self.image_dict["zoom_out"] = zoom_out
+        self.image_dict["robot"] = robot
 
 ######################################################### TRIGGER CHECK #################################################
 
@@ -229,6 +233,7 @@ class User_interface:
             self.close_popup()
             self.create_room_popup()
         elif event.ui_element == self.UI_elements.get("yes"):
+            self.robot.confirmed = True
             self.close_popup()
         elif event.ui_element == self.UI_elements.get("no"):
             self.robot = None
@@ -401,6 +406,9 @@ class User_interface:
         self.draw_image("zoom_in", self.WIDTH - 200, self.HEIGHT - 100)
         self.draw_image("zoom_out", self.WIDTH - 375, self.HEIGHT - 100)
 
+    def draw_robot(self):
+        if self.robot != None and self.robot.confirmed:
+            self.draw_image("robot", self.robot.pos[0], self.robot.pos[1])
 ######################################################## POPUPS CREATORS #####################################################
     
     def create_choice_popup(self):
@@ -927,6 +935,7 @@ class User_interface:
             self.draw_buttons()
             self.draw_add_room()
             self.draw_string()
+            self.draw_robot()
 
             self.check_trajectory()
 

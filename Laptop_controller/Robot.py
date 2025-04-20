@@ -4,3 +4,4 @@ class Robot:
         self.pos = pos
         self.angle = angle
         self.room = room
+        self.confirmed = False
