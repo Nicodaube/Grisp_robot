@@ -5,6 +5,7 @@ import numpy as np
 import serial
 from Server import Server
 from Room import Room
+from Robot import Robot
 from pathlib import Path
 import SaveParser
 import time
@@ -37,6 +38,9 @@ class User_interface:
     action_duration = 0
     is_trajectory_started = False
     timer = 0
+
+    # Robot UI
+    robot = None
 
     # Robot state
     message = 0  #Message to send to the robot
@@ -165,19 +169,36 @@ class User_interface:
                 room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
             self.RESIZE += 1
 
+
+        robot_room = None
         for room in range(len(self.rooms)):
+
             for side in ["L", "R", "T", "B"]:
                 name = "plus_" + side + "_" + str(room)
                 if self.is_click_image(name, event) :
                     self.in_popup = True
                     self.temp_origin = name
                     self.create_choice_popup()
+
             for corner in ["TL", "TR", "BL", "BR"]:
                 name = "plus_" + corner + "_" + str(room)
                 if self.is_click_image(name, event) :
                     self.in_popup = True
                     self.temp_origin = name
                     self.create_sensor_popup()
+
+            room_obj = self.rooms[room]
+            
+            room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
+            room_rect.center = room_obj.pos
+
+            if room_rect.collidepoint(event.pos):
+                robot_room = room_obj
+
+        if robot_room != None:
+            self.in_popup = True
+            self.robot = Robot(event.pos, 0, robot_room)
+            self.create_robot_popup()
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
@@ -207,6 +228,11 @@ class User_interface:
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
+        elif event.ui_element == self.UI_elements.get("yes"):
+            self.close_popup()
+        elif event.ui_element == self.UI_elements.get("no"):
+            self.robot = None
+            self.close_popup()
         
         #Check sensor choice 
         sensors = self.server.get_sensors()
@@ -660,6 +686,59 @@ class User_interface:
             )
 
             current_y += button_height + margin
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
+    def create_robot_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 6
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Place the robot ?'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Do you want to place the robot here ?",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["yes"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width//2 - margin_left, button_height),
+            text="Yes",
+            manager=self.manager,
+            container=popup_window
+        )
+
+        self.UI_elements["no"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(2*margin_left + button_width//2, current_y, button_width//2 - margin_left, button_height),
+            text="No",
+            manager=self.manager,
+            container=popup_window
+        )
 
         self.manager.draw_ui(self.screen)
         pygame.display.update()
