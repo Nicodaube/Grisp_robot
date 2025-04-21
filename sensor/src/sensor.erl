@@ -40,7 +40,7 @@ await_connection(Id) ->
     receive        
         {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
             io:format("[SENSOR] WiFi setup done~n~n"),
-            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
             discover_server(Id)
     after 18000 ->
         io:format("[SENSOR] WiFi setup failed:~n~n"),
@@ -66,6 +66,7 @@ ack_loop(Id) ->
     receive
         {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
             io:format("[SENSOR] Received ACK from server~n"),
+            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
             ok
     after 5000 ->
         ack_loop(Id)
@@ -147,7 +148,7 @@ loop(Id) ->
             end;
         {hera_notify, ["Exit"]} ->
             SensorID = persistent_term:get(sonar_sensor, none),
-            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
             case SensorID of
                 none ->
                     ok;
