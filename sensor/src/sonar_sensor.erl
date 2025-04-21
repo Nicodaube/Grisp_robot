@@ -2,6 +2,7 @@
 
 -behavior(hera_measure).
 
+-define(ROBOT_HEIGHT, 30).
 -export([init/1, measure/1]).
 
 init(_Args) ->
@@ -38,13 +39,13 @@ get_measure(State, SensorName) ->
     Dist_inch = pmod_maxsonar:get(),
     Dist_cm = Dist_inch * 2.54,
     D = round(Dist_cm, 4),    
-    io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
+    %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
 
     case hera_data:get(pos, SensorName) of
         [{_, _, _, [_ , _, H]}] ->
-            True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - 30, 2)), 4), % Taking the height of the sonar into account
+            True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - ?ROBOT_HEIGHT, 2)), 3), % Taking the height of the sonar into account
 
-            io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, D]),
+            %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
 
             hera_data:store(distance, SensorName, Seq, [True_measure]),
             NewState = State#{seq => Seq + 1},
