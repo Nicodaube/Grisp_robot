@@ -202,7 +202,8 @@ class User_interface:
         if robot_room != None:
             self.in_popup = True
             x, y = self.get_real_pos(event.pos[0], event.pos[1])
-            self.robot = Robot(event.pos, (x,y), 0, robot_room)
+            self.server.update_robot(event.pos, (x,y), 0, robot_room)
+            self.robot = self.server.robot
             self.create_robot_popup()
 
     def event_interact_popup(self, event):
@@ -235,7 +236,6 @@ class User_interface:
             self.create_room_popup()
         elif event.ui_element == self.UI_elements.get("yes"):
             self.robot.confirmed = True
-            self.server.robot = self.robot
             self.close_popup()
         elif event.ui_element == self.UI_elements.get("no"):
             self.robot = None

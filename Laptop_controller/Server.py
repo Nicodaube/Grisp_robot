@@ -1,6 +1,7 @@
 import socket
 import threading
 from Sensor import Sensor
+from Robot import Robot
 import time
 
 class Server:
@@ -9,7 +10,7 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
-    robot = None
+    robot = Robot()
     started = False
 
     def __init__(self):
@@ -73,6 +74,9 @@ class Server:
 
     def update_sens(self, id, room, x, y):
         self.sensors.get(id).update_pos(room, x, y)
+
+    def update_robot(self, pos, real_pos, angle, room):
+        self.robot.update_pos(pos, real_pos, angle, room)
         
     def send_pos(self):
         self.started = True
@@ -84,7 +88,7 @@ class Server:
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
-        message = "Add_Device : robot , " + self.robot.real_pos + " , " + self.robot.room + " , " + self.robot.angle
+        message = "Add_Device : robot , " + self.robot.real_pos + " , " + self.robot.room + " , " + self.robot.angle + " , " + self.robot.ip + " , " + self.robot.port
         self.send(message, "brd")
         message = "Start " + self.HOST
         self.send(message, "brd")
