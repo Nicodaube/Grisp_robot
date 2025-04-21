@@ -5,6 +5,7 @@ import numpy as np
 import serial
 from Server import Server
 from Room import Room
+from Robot import Robot
 from pathlib import Path
 import SaveParser
 import time
@@ -13,7 +14,7 @@ class User_interface:
 
     # App General State
     WIDTH, HEIGHT = 1920, 1080 # Screen Size
-    RESIZE = 3 # Resizing factor for the rooms
+    RESIZE = 2 # Resizing factor for the rooms
     running = True
     in_popup = False
     active_popup = None
@@ -37,6 +38,9 @@ class User_interface:
     action_duration = 0
     is_trajectory_started = False
     timer = 0
+
+    # Robot UI
+    robot = None
 
     # Robot state
     message = 0  #Message to send to the robot
@@ -78,6 +82,9 @@ class User_interface:
         stop_img = pygame.image.load('./img/Stop_sign.png')
         stop_img = pygame.transform.scale(stop_img, (stop_img.get_width() // 10, stop_img.get_height() // 10))
 
+        robot = pygame.image.load('./img/Robot.png')
+        robot = pygame.transform.scale(robot, (robot.get_width()//4, robot.get_height()//4))
+
         plus_img = pygame.image.load('./img/plus.png')
         plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
 
@@ -113,6 +120,7 @@ class User_interface:
         self.image_dict["start_pressed"] = start_img_pressed
         self.image_dict["zoom_in"] = zoom_in
         self.image_dict["zoom_out"] = zoom_out
+        self.image_dict["robot"] = robot
 
 ######################################################### TRIGGER CHECK #################################################
 
@@ -134,7 +142,39 @@ class User_interface:
         if self.in_popup:
             return
         
-        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
+        robot_room = None
+        for room in range(len(self.rooms)):
+
+            for side in ["L", "R", "T", "B"]:
+                name = "plus_" + side + "_" + str(room)
+                if self.is_click_image(name, event) :
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_choice_popup()
+
+            for corner in ["TL", "TR", "BL", "BR"]:
+                name = "plus_" + corner + "_" + str(room)
+                if self.is_click_image(name, event) :
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_sensor_popup()
+
+            room_obj = self.rooms[room]
+            
+            room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
+            room_rect.center = room_obj.pos
+
+            if room_rect.collidepoint(event.pos):
+                robot_room = room_obj
+
+        if robot_room != None and self.robot == None:
+            self.in_popup = True
+            x, y = self.get_real_pos(event.pos[0], event.pos[1])
+            self.server.update_robot(event.pos, (x,y), 0, robot_room)
+            self.robot = self.server.robot
+            self.create_robot_popup()
+        
+        elif len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
             self.temp_origin = "plus_L_0"
             self.create_room_popup()
@@ -165,19 +205,8 @@ class User_interface:
                 room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
             self.RESIZE += 1
 
-        for room in range(len(self.rooms)):
-            for side in ["L", "R", "T", "B"]:
-                name = "plus_" + side + "_" + str(room)
-                if self.is_click_image(name, event) :
-                    self.in_popup = True
-                    self.temp_origin = name
-                    self.create_choice_popup()
-            for corner in ["TL", "TR", "BL", "BR"]:
-                name = "plus_" + corner + "_" + str(room)
-                if self.is_click_image(name, event) :
-                    self.in_popup = True
-                    self.temp_origin = name
-                    self.create_sensor_popup()
+
+
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
@@ -207,14 +236,26 @@ class User_interface:
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
+        elif event.ui_element == self.UI_elements.get("yes"):
+            self.robot.confirmed = True
+            self.close_popup()
+        elif event.ui_element == self.UI_elements.get("no"):
+            self.robot = None
+            self.close_popup()
         
         #Check sensor choice 
         sensors = self.server.get_sensors()
         for id in sensors:
             if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
                 self.close_popup()
+                room = int(self.temp_origin[-1])
+                side = self.temp_origin[-3]
+
+                room = self.rooms[room]
+
+                ix, iy = room.compute_pos(side)
                 
-                room, x, y = self.get_sensor_pos()
+                x, y = self.get_real_pos(ix, iy)
                 self.server.update_sens(id, room, x, y)
                 self.draw_sensor()
                 self.temp_origin = None
@@ -375,6 +416,9 @@ class User_interface:
         self.draw_image("zoom_in", self.WIDTH - 200, self.HEIGHT - 100)
         self.draw_image("zoom_out", self.WIDTH - 375, self.HEIGHT - 100)
 
+    def draw_robot(self):
+        if self.robot != None and self.robot.confirmed:
+            self.draw_image("robot", self.robot.pos[0], self.robot.pos[1])
 ######################################################## POPUPS CREATORS #####################################################
     
     def create_choice_popup(self):
@@ -664,6 +708,59 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
+    def create_robot_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 6
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Place the robot ?'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Do you want to place the robot here ?",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["yes"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width//2 - margin_left, button_height),
+            text="Yes",
+            manager=self.manager,
+            container=popup_window
+        )
+
+        self.UI_elements["no"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(2*margin_left + button_width//2, current_y, button_width//2 - margin_left, button_height),
+            text="No",
+            manager=self.manager,
+            container=popup_window
+        )
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
 ######################################################### SERIAL COMM FUNCTIONS #################################################
 
     def serial_comm(self):
@@ -781,18 +878,11 @@ class User_interface:
 
         self.room_grid = ((x_min, x_max), (y_min, y_max))
 
-    def get_sensor_pos(self):
-        room = int(self.temp_origin[-1])
-        side = self.temp_origin[-3]
-
-        room = self.rooms[room]
-
-        x,y = room.compute_pos(side)
-
+    def get_real_pos(self, x, y):
         grid_x = round((x - self.room_grid[0][0])/(self.HEIGHT/self.RESIZE), 2)
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
-        return int(self.temp_origin[-1]), grid_x, grid_y
+        return grid_x, grid_y
     
     def check_trajectory(self):
         if self.is_trajectory_started:
@@ -848,6 +938,7 @@ class User_interface:
             self.draw_buttons()
             self.draw_add_room()
             self.draw_string()
+            self.draw_robot()
 
             self.check_trajectory()
 

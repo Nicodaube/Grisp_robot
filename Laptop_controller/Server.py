@@ -1,6 +1,7 @@
 import socket
 import threading
 from Sensor import Sensor
+from Robot import Robot
 import time
 
 class Server:
@@ -9,6 +10,7 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
+    robot = Robot()
     started = False
 
     def __init__(self):
@@ -23,7 +25,6 @@ class Server:
             message = "ping : server , " + self.HOST + " , " + str(self.PORT)
             self.send(message, "brd")
             
-
     def rcv_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
             server_socket.bind((self.HOST, self.PORT))
@@ -73,6 +74,9 @@ class Server:
 
     def update_sens(self, id, room, x, y):
         self.sensors.get(id).update_pos(room, x, y)
+
+    def update_robot(self, pos, real_pos, angle, room):
+        self.robot.update_pos(pos, real_pos, angle, room)
         
     def send_pos(self):
         self.started = True
@@ -81,9 +85,17 @@ class Server:
                 message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
                 self.send(message, "brd")
                 time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room.room_num)
                 self.send(message, "brd")
                 time.sleep(0.5)
+
+        if self.robot.ip != "0":
+            message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
+            self.send(message, "brd")
+            time.sleep(0.5)
+            message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room.room_num)
+            self.send(message, "brd")
+
         message = "Start " + self.HOST
         self.send(message, "brd")
 

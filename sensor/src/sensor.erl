@@ -40,7 +40,7 @@ await_connection(Id) ->
     receive        
         {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
             io:format("[SENSOR] WiFi setup done~n~n"),
-            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
+            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
             discover_server(Id)
     after 18000 ->
         io:format("[SENSOR] WiFi setup failed:~n~n"),
@@ -66,6 +66,7 @@ ack_loop(Id) ->
     receive
         {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
             io:format("[SENSOR] Received ACK from server~n"),
+            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
             ok
     after 5000 ->
         ack_loop(Id)
@@ -99,7 +100,7 @@ reset_data() ->
 
 loop(Id) ->
     receive
-        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used devices           
+        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors           
             SelfName = persistent_term:get(sensor_name),
             case list_to_atom(Name) of 
                 SelfName -> % Don't register self
@@ -111,7 +112,14 @@ loop(Id) ->
                     hera_com:add_device(OName, Ip, IntPort)
             end,            
             loop(Id);
-
+        {hera_notify, ["Init_pos", SPosx, SPosy, SAngle, SRoom]} -> % Register Robot Device initial position
+            SelfName = persistent_term:get(sensor_name),
+            Posx = list_to_float(SPosx),
+            Posy = list_to_float(SPosy),
+            Angle = list_to_integer(SAngle),
+            Room = list_to_integer(SRoom),            
+            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
+            loop(Id);
         {hera_notify, ["Pos", Ids, Xs, Ys, RoomS]} -> % Received at config time To get all the sensors positions            
             X = list_to_float(Xs),
             Y = list_to_float(Ys),
@@ -139,9 +147,14 @@ loop(Id) ->
                     loop(Id)
             end;
         {hera_notify, ["Exit"]} ->
-            SensorID = persistent_term:get(sonar_sensor),
-            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
-            exit(SensorID, shutdown),
+            SensorID = persistent_term:get(sonar_sensor, none),
+            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
+            case SensorID of
+                none ->
+                    ok;
+                _ -> 
+                    exit(SensorID, shutdown)
+            end,
             reset_data(),            
             discover_server(Id),
             io:format("[SENSOR] Waiting for start signal ...~n~n"),
