@@ -54,8 +54,6 @@ get_measure(State, SensorName) ->
             io:format("[SONAR_SENSOR] Cannot get sensor height~n")
     end.
     
-    
-
 round(Number, Precision) ->
     Power = math:pow(10, Precision),
     round(Number * Power) / Power.

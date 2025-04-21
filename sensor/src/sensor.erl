@@ -156,7 +156,7 @@ loop(Id) ->
                 _ -> 
                     exit(SensorID, shutdown)
             end,
-            time:sleep(500),
+            timer:sleep(500),
             reset_data(),            
             discover_server(Id),
             io:format("[SENSOR] Waiting for start signal ...~n~n"),
