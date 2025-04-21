@@ -167,14 +167,14 @@ class User_interface:
             if room_rect.collidepoint(event.pos):
                 robot_room = room_obj
 
-        if robot_room != None:
+        if robot_room != None and self.robot == None:
             self.in_popup = True
             x, y = self.get_real_pos(event.pos[0], event.pos[1])
             self.server.update_robot(event.pos, (x,y), 0, robot_room)
             self.robot = self.server.robot
             self.create_robot_popup()
         
-        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
+        elif len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
             self.temp_origin = "plus_L_0"
             self.create_room_popup()
