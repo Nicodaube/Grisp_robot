@@ -8,6 +8,7 @@ class Sensor :
         self.x = -1
         self.y = -1
         self.distance = -1
+        self.height = 0
 
     def update_pos(self, room, x, y):
         self.room = room
@@ -17,3 +18,7 @@ class Sensor :
 
     def update_data(self, distance):
         self.distance = distance
+
+    def update_height(self, height):
+        print("[SENSOR_" + str(self.id) + "] is at " + str(height) +"m from the ground")
+        self.height = height

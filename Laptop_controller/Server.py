@@ -74,6 +74,9 @@ class Server:
 
     def update_sens(self, id, room, x, y):
         self.sensors.get(id).update_pos(room, x, y)
+    
+    def update_sens_height(self, id, height):
+        self.sensors.get(id).update_height(height)
 
     def update_robot(self, pos, real_pos, angle, room):
         self.robot.update_pos(pos, real_pos, angle, room)
@@ -85,7 +88,7 @@ class Server:
                 message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
                 self.send(message, "brd")
                 time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room.room_num)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
 

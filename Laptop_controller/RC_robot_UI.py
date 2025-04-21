@@ -205,9 +205,6 @@ class User_interface:
                 room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
             self.RESIZE += 1
 
-
-
-
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
             width = self.UI_elements.get("Width").get_text()
@@ -233,6 +230,15 @@ class User_interface:
         elif event.ui_element == self.UI_elements.get("Sensor"):
             self.close_popup()
             self.create_sensor_popup()
+        elif event.ui_element == self.UI_elements.get("SensH_Submit"):
+            height = self.UI_elements.get("Sens_height").get_text()
+
+            height = float(height)
+            self.server.update_sens_height(self.temp_origin, height)
+
+            self.close_popup()
+            self.temp_origin = None
+
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
@@ -256,9 +262,10 @@ class User_interface:
                 ix, iy = room.compute_pos(side)
                 
                 x, y = self.get_real_pos(ix, iy)
-                self.server.update_sens(id, room, x, y)
+                self.create_sensor_height_popup()
+                self.server.update_sens(id, room.room_num, x, y)
                 self.draw_sensor()
-                self.temp_origin = None
+                self.temp_origin = id
 
         #File loader choice
         for filename in self.saved_files:
@@ -477,7 +484,7 @@ class User_interface:
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
         popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 3
+        popup_height = self.HEIGHT // 2
         margin_left = (self.WIDTH - button_width)//20
         margin = 20
 
@@ -538,7 +545,7 @@ class User_interface:
             container=popup_window
         )
 
-        current_y += button_height + margin
+        current_y += int(1.75 * button_height) + margin
 
         self.UI_elements["Room_Submit"] = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
@@ -598,6 +605,59 @@ class User_interface:
             )
 
             current_y += button_height + margin
+
+        self.manager.draw_ui(self.screen)
+        pygame.display.update()
+
+    def create_sensor_height_popup(self):
+        # Calculate sizes for buttons and popup dimensions
+        button_width = self.WIDTH // 2 - self.WIDTH // 20
+        button_height = min(self.HEIGHT // 20, 60)
+        popup_width = self.WIDTH // 2
+        popup_height = self.HEIGHT // 5
+        margin_left = (self.WIDTH - button_width)//20
+        margin = 20
+
+        # Center the popup on the screen
+        popup_rect = pygame.Rect(
+            (self.WIDTH - popup_width) // 2,
+            (self.HEIGHT - popup_height) // 2,
+            popup_width,
+            popup_height
+        )
+
+        popup_window = pygame_gui.elements.UIWindow(
+            rect=popup_rect,
+            manager=self.manager,
+            window_display_title='Sensor Height'
+        )
+
+        self.active_popup = popup_window
+
+        current_y = margin
+
+        header_label = pygame_gui.elements.UILabel(
+            
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="At what height is the sensor (count to the center of the sonar):",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Sens_height"] = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["SensH_Submit"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Submit",
+            manager=self.manager,
+            container=popup_window
+        )
 
         self.manager.draw_ui(self.screen)
         pygame.display.update()
