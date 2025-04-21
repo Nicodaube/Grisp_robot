@@ -42,7 +42,7 @@ get_measure(State, SensorName) ->
     %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
 
     case hera_data:get(pos, SensorName) of
-        [{_, _, _, [_ , _, H]}] ->
+        [{_, _, _, [_ , _, H, _]}] ->
             True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - ?ROBOT_HEIGHT, 2)), 3), % Taking the height of the sonar into account
 
             %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),

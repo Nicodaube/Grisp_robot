@@ -65,7 +65,7 @@ find_sensors_room(Room) ->
     
 get_data(Name) ->
     case hera_data:get(pos, Name) of 
-    [{_, _, _, [X, Y]}] ->
+    [{_, _, _, [X, Y, _, A]}] ->
         case  hera_data:get(distance, Name) of 
             [{_, _, _, [Dist]}] ->
                 {ok, [X, Y, Dist]};

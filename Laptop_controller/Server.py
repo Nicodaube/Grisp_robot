@@ -90,7 +90,7 @@ class Server:
                 message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
                 self.send(message, "brd")
                 time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + "," + sensor.angle + " , " + str(sensor.room)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + " , " + str(sensor.angle) + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
 
