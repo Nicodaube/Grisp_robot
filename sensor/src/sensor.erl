@@ -120,13 +120,14 @@ loop(Id) ->
             Room = list_to_integer(SRoom),            
             hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
             loop(Id);
-        {hera_notify, ["Pos", Ids, Xs, Ys, RoomS]} -> % Received at config time To get all the sensors positions            
+        {hera_notify, ["Pos", Ids, Xs, Ys, Hs, RoomS]} -> % Received at config time To get all the sensors positions            
             X = list_to_float(Xs),
             Y = list_to_float(Ys),
+            H = list_to_float(Hs),
             Room = list_to_integer(RoomS),
             SensorName = list_to_atom("sensor_" ++ Ids),
             hera_data:store(room, SensorName, 1, [Room]),
-            hera_data:store(pos, SensorName, 1, [X, Y]),
+            hera_data:store(pos, SensorName, 1, [X, Y, H]),
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             loop(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
@@ -155,6 +156,7 @@ loop(Id) ->
                 _ -> 
                     exit(SensorID, shutdown)
             end,
+            time:sleep(500),
             reset_data(),            
             discover_server(Id),
             io:format("[SENSOR] Waiting for start signal ...~n~n"),
