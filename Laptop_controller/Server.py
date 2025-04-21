@@ -72,9 +72,11 @@ class Server:
     def get_sensors(self):
         return self.sensors.keys()
 
-    def update_sens(self, id, room, x, y):
-        self.sensors.get(id).update_pos(room, x, y)
-    
+    def update_sens(self, id, side, room, x, y):
+        sens = self.sensors.get(id)
+        sens.set_angle(side)
+        sens.update_pos(room, x, y)
+        
     def update_sens_height(self, id, height):
         self.sensors.get(id).update_height(height)
 
@@ -88,7 +90,7 @@ class Server:
                 message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
                 self.send(message, "brd")
                 time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + " , " + str(sensor.room)
+                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + "," + sensor.angle + " , " + str(sensor.room)
                 self.send(message, "brd")
                 time.sleep(0.5)
 
