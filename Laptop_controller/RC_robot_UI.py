@@ -390,10 +390,16 @@ class User_interface:
             self.draw_image(room.corners[corner].type + "_" + corner + "_" + str(room.room_num), room.corners[corner].pos[0], room.corners[corner].pos[1])
 
     def draw_sensor(self):
-        room_origin = int(self.temp_origin[7])
-        side_origin = self.temp_origin[5]
+        if self.temp_origin[7] =="_":
+            room_origin = int(self.temp_origin[8])
+            side_origin = self.temp_origin[5:7]
+            self.sensor.append(self.rooms[room_origin].corners[side_origin])
+        else :
+            room_origin = int(self.temp_origin[7])
+            side_origin = self.temp_origin[5]
+            self.sensor.append(self.rooms[room_origin].sides[side_origin])
         self.rooms[room_origin].modify_side(side_origin, "./img/sensor.png", "sensor")
-        self.sensor.append(self.rooms[room_origin].sides[side_origin])
+        
 
     def draw_door(self, x, y):
         width, height = self.compute_screen_size(0.3, 0.3)
