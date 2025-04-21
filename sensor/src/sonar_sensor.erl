@@ -37,11 +37,22 @@ get_measure(State, SensorName) ->
     Seq = maps:get(seq, State, 1),
     Dist_inch = pmod_maxsonar:get(),
     Dist_cm = Dist_inch * 2.54,
-    Measure = round(Dist_cm, 4),    
-    %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, R_Dist_cm]),
-    hera_data:store(distance, SensorName, Seq, [Measure]),
-    NewState = State#{seq => Seq + 1},
-    {ok, [Measure], distance, SensorName, NewState}.
+    D = round(Dist_cm, 4),    
+    io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
+
+    case hera_data:get(pos, SensorName) of
+        [{_, _, _, [_ , _, H]}] ->
+            True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - 30, 2)), 4), % Taking the height of the sonar into account
+
+            io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, D]),
+
+            hera_data:store(distance, SensorName, Seq, [True_measure]),
+            NewState = State#{seq => Seq + 1},
+            {ok, [True_measure], distance, SensorName, NewState};
+        _ ->
+            io:format("[SONAR_SENSOR] Cannot get sensor height~n")
+    end.
+    
     
 
 round(Number, Precision) ->

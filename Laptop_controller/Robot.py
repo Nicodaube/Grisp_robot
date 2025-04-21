@@ -3,7 +3,7 @@ class Robot:
     real_pos = (0,0)
     angle = 0
     room = -1
-    ip = "1"
+    ip = "0"
     port = 0
 
     def __init__(self):
