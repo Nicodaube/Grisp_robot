@@ -118,7 +118,7 @@ loop(Id) ->
             Angle = list_to_integer(SAngle),
             Room = list_to_integer(SRoom),            
             hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
-            loop(id);
+            loop(Id);
         {hera_notify, ["Pos", Ids, Xs, Ys, RoomS]} -> % Received at config time To get all the sensors positions            
             X = list_to_float(Xs),
             Y = list_to_float(Ys),
