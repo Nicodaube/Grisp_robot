@@ -142,6 +142,38 @@ class User_interface:
         if self.in_popup:
             return
         
+        robot_room = None
+        for room in range(len(self.rooms)):
+
+            for side in ["L", "R", "T", "B"]:
+                name = "plus_" + side + "_" + str(room)
+                if self.is_click_image(name, event) :
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_choice_popup()
+
+            for corner in ["TL", "TR", "BL", "BR"]:
+                name = "plus_" + corner + "_" + str(room)
+                if self.is_click_image(name, event) :
+                    self.in_popup = True
+                    self.temp_origin = name
+                    self.create_sensor_popup()
+
+            room_obj = self.rooms[room]
+            
+            room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
+            room_rect.center = room_obj.pos
+
+            if room_rect.collidepoint(event.pos):
+                robot_room = room_obj
+
+        if robot_room != None:
+            self.in_popup = True
+            x, y = self.get_real_pos(event.pos[0], event.pos[1])
+            self.server.update_robot(event.pos, (x,y), 0, robot_room)
+            self.robot = self.server.robot
+            self.create_robot_popup()
+        
         if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
             self.temp_origin = "plus_L_0"
@@ -174,37 +206,7 @@ class User_interface:
             self.RESIZE += 1
 
 
-        robot_room = None
-        for room in range(len(self.rooms)):
 
-            for side in ["L", "R", "T", "B"]:
-                name = "plus_" + side + "_" + str(room)
-                if self.is_click_image(name, event) :
-                    self.in_popup = True
-                    self.temp_origin = name
-                    self.create_choice_popup()
-
-            for corner in ["TL", "TR", "BL", "BR"]:
-                name = "plus_" + corner + "_" + str(room)
-                if self.is_click_image(name, event) :
-                    self.in_popup = True
-                    self.temp_origin = name
-                    self.create_sensor_popup()
-
-            room_obj = self.rooms[room]
-            
-            room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
-            room_rect.center = room_obj.pos
-
-            if room_rect.collidepoint(event.pos):
-                robot_room = room_obj
-
-        if robot_room != None:
-            self.in_popup = True
-            x, y = self.get_real_pos(event.pos[0], event.pos[1])
-            self.server.update_robot(event.pos, (x,y), 0, robot_room)
-            self.robot = self.server.robot
-            self.create_robot_popup()
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
