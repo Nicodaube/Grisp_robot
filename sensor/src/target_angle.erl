@@ -1,19 +1,25 @@
 -module(target_angle).
 
--export([start_link/1]).
+-behavior(hera_measure).
 
-start_link(SensID) ->
+-export([init/1, measure/1]).
+
+init(_Args) ->
     io:format("[TARGET_ANGLE] Spawning~n"),
     case setup() of
         {ok, _} ->
-            spawn(fun () -> loop(SensID, 1) end);
-        _ ->
-            ok
-    end,
-    ok.
+            {ok, #{seq => 1}, #{
+                name => angle_measure,
+                iter => infinity,
+                timeout => 300
+            }};
+        stop ->
+            io:format("[TARGET_ANGLE] No other sensor, not spawning"),
+            {stop, no_other_sensor}
+    end.    
 
 setup() ->
-    timer:sleep(1500),
+    timer:sleep(2000),
     SensName = persistent_term:get(sensor_name),
     case hera_data:get(room, SensName) of
       [{_, _, _, [Room]}] ->        
@@ -32,17 +38,17 @@ setup() ->
         timer:sleep(500),
         setup()
     end.
-loop(SensID, Seq) ->
-    timer:sleep(500),
-    SensName = persistent_term:get(sensor_name),
+measure(State) ->
+    Seq = maps:get(seq, State, 1),
+    SensorName = persistent_term:get(sensor_name),
     Osensor = persistent_term:get(osensor),
-    {ok, [X, Y, Dist]} = get_data(SensName),
+    {ok, [X, Y, Dist]} = get_data(SensorName),
     {ok, [Ox, Oy, Odist]} = get_data(Osensor),                
     {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
-    hera_data:store(angle, SensName, Seq, [Angle]),
-    hera_com:send(angle, Seq, SensName, [Angle]),
-    %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
-    loop(SensID, Seq + 1).
+    %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle])
+    hera_data:store(angle, SensorName, Seq, [Angle]),
+    NewState = State#{seq => Seq + 1},
+    {ok, [Angle], angle, SensorName, NewState}.    
 
 find_sensors_room(Room) ->
     Devices = persistent_term:get(devices),

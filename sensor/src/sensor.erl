@@ -132,7 +132,7 @@ loop(Id) ->
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             loop(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
-            spawn(target_angle, start_link, [Id]),
+            hera:start_measure(target_angle, []),
             timer:sleep(300),
             {ok, Pid} = hera:start_measure(sonar_sensor, []),
             persistent_term:put(sonar_sensor, Pid),
