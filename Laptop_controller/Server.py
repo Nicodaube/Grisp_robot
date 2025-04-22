@@ -100,7 +100,7 @@ class Server:
             time.sleep(0.5)
             message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room.room_num)
             self.send(message, "brd")
-
+        time.sleep(1)
         message = "Start " + self.HOST
         self.send(message, "brd")
 

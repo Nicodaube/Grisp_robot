@@ -50,8 +50,8 @@ get_measure(State, SensorName) ->
             hera_data:store(distance, SensorName, Seq, [True_measure]),
             NewState = State#{seq => Seq + 1},
             {ok, [True_measure], distance, SensorName, NewState};
-        _ ->
-            io:format("[SONAR_SENSOR] Cannot get sensor height~n")
+        Msg ->
+            io:format("[SONAR_SENSOR] Cannot get sensor height : ~p~n",[Msg])
     end.
     
 round(Number, Precision) ->
