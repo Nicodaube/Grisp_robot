@@ -13,6 +13,7 @@ The project is done using Erlang OTP (current version 27.2.4). If you want more 
 This repository is organised in several subdirectories :
 
 * **Hardware_robot** : contains all the necessary files to build the robot. In `Hardware_robot/printing_files` you will find all the files for the prints in 3D and the laser cuts.
+* **Hardware_sensor** : Contains all the necessary files to build the sensors and their supports.
 * **Laptop_controller** : contains all the code concerning the python server and controller for the robot. Note that its use is mandatory to have a fully functional system.
 * **LilyGo_software** : contains all the code for the two LilyGO used in this project. They are used for communication between the robot and the controller.
 * **Wiki_image** : just a directory containing all the wiki and README images.
