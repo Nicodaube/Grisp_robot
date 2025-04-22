@@ -19,7 +19,7 @@ init(_Args) ->
     end.    
 
 setup() ->
-    timer:sleep(2000),
+    timer:sleep(1500),
     SensName = persistent_term:get(sensor_name),
     case hera_data:get(room, SensName) of
       [{_, _, _, [Room]}] ->        
