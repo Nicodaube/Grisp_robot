@@ -254,8 +254,9 @@ class User_interface:
         for id in sensors:
             if event.ui_element == self.UI_elements.get("Sensor choice " + str(id)):
                 self.close_popup()
-                room = int(self.temp_origin[-1])
-                side = self.temp_origin[-3]
+                splitted_origin = self.temp_origin.split("_")
+                room = int(splitted_origin[2])
+                side = splitted_origin[1]
 
                 room = self.rooms[room]
 
@@ -263,7 +264,7 @@ class User_interface:
                 
                 x, y = self.get_real_pos(ix, iy)
                 self.create_sensor_height_popup()
-                self.server.update_sens(id, room.room_num, x, y)
+                self.server.update_sens(id, side, room.room_num, x, y)
                 self.draw_sensor()
                 self.temp_origin = id
 
@@ -390,11 +391,16 @@ class User_interface:
             self.draw_image(room.corners[corner].type + "_" + corner + "_" + str(room.room_num), room.corners[corner].pos[0], room.corners[corner].pos[1])
 
     def draw_sensor(self):
-        room_origin = int(self.temp_origin[7])
-        side_origin = self.temp_origin[5]
+        if self.temp_origin[7] =="_":
+            room_origin = int(self.temp_origin[8])
+            side_origin = self.temp_origin[5:7]
+            self.sensor.append(self.rooms[room_origin].corners[side_origin])
+        else :
+            room_origin = int(self.temp_origin[7])
+            side_origin = self.temp_origin[5]
+            self.sensor.append(self.rooms[room_origin].sides[side_origin])
         self.rooms[room_origin].modify_side(side_origin, "./img/sensor.png", "sensor")
-        self.sensor.append(self.rooms[room_origin].sides[side_origin])
-
+        
     def draw_door(self, x, y):
         width, height = self.compute_screen_size(0.3, 0.3)
         door_rect = pygame.Rect(0, 0, width, height)
