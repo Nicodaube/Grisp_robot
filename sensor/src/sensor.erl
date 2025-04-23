@@ -7,7 +7,7 @@
 -export([start/2, stop/1]).
 
 %============================================================================================================================================
-%========================================================= CONFIG SECTION ===================================================================
+%========================================================= BASIC GRISP FUNC =================================================================
 %============================================================================================================================================
 
 % @private
@@ -18,14 +18,22 @@ start(_Type, _Args) ->
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
+    config(),
+    {ok, self()}.
+
+% @private
+stop(_State) -> ok.
+
+%============================================================================================================================================
+%========================================================= CONFIG TIME FUNC =================================================================
+%============================================================================================================================================
+
+config() ->
     wifi_setup(),
     Id = persistent_term:get(id),
     io:format("[SENSOR] Waiting for start signal ...~n~n"),
     loop(Id),
     {ok, self()}.
-
-% @private
-stop(_State) -> ok.
 
 wifi_setup() ->
     % Computing sensor id and storing it in persistent data
@@ -88,11 +96,8 @@ get_grisp_id() ->
     SUM = (V1) + (V2 bsl 1) + (V3 bsl 2) + (V4 bsl 3) + (V5 bsl 4),
     {ok, SUM}.
 
-reset_data() ->
-    persistent_term:erase(osensor),
-    persistent_term:erase(sonar_sensor),
-    hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n~n").
+send_udp_message(Name, Message, Type) ->
+    hera_com:send_unicast(Name, Message, Type).
     
 %============================================================================================================================================
 %============================================================== LOOP ========================================================================
@@ -100,85 +105,108 @@ reset_data() ->
 
 loop(Id) ->
     receive
-        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors           
-            SelfName = persistent_term:get(sensor_name),
-            case list_to_atom(Name) of 
-                SelfName -> % Don't register self
-                    ok;
-                OName -> 
-                    io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
-                    {ok, Ip} = inet:parse_address(SIp),
-                    IntPort = list_to_integer(Port),
-                    hera_com:add_device(OName, Ip, IntPort)
-            end,            
-            loop(Id);
+        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors 
+            add_device(Id, Name, SIp, Port);          
         {hera_notify, ["Init_pos", SPosx, SPosy, SAngle, SRoom]} -> % Register Robot Device initial position
-            SelfName = persistent_term:get(sensor_name),
-            Posx = list_to_float(SPosx),
-            Posy = list_to_float(SPosy),
-            Angle = list_to_integer(SAngle),
-            Room = list_to_integer(SRoom),            
-            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
-            loop(Id);
+            store_robot_position(Id, SPosx, SPosy, SAngle, SRoom);            
         {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
-            X = list_to_float(Xs),
-            Y = list_to_float(Ys),
-            H = list_to_float(Hs),
-            A = list_to_integer(As),
-            Room = list_to_integer(RoomS),
-            SensorName = list_to_atom("sensor_" ++ Ids),
-            hera_data:store(room, SensorName, 1, [Room]),
-            hera_data:store(pos, SensorName, 1, [X, Y, H, A]),
-            %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
-            loop(Id);
+            store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
-            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
-            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
-            {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-            persistent_term:put(target_angle, Angle_Pid),
-            persistent_term:put(sonar_sensor, Sonar_Pid),
-            persistent_term:put(kalman_measure, Kalman_Pid),
-            [grisp_led:color(L, green) || L <- [1, 2]],
-            loop(Id);
+            start_measures(Id);
         {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
-            Pid = persistent_term:get(sonar_sensor, none),
-            case Pid of
-                none ->
-                    io:format("[ERROR] Sonar sensor has not spawned~n"),
-                    loop(Id);
-                _ ->
-                    Pid ! {measure},
-                    loop(Id)
-            end;
+            wait_before_measure(Id);
         {hera_notify, ["Exit"]} ->
-            exit_measure(sonar_sensor),
-            exit_measure(target_angle),
-            exit_measure(kalman_measure),
-            timer:sleep(500),
-            reset_data(),
-            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],            
-            discover_server(Id),            
-            io:format("[SENSOR] Waiting for start signal ...~n~n"),
-            loop(Id);
+            reset_state(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop(Id);
-        {hera_notify, Msg} ->
+        {hera_notify, Msg} -> % Unhandled Message
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop(Id);
-        Msg ->
+        Msg -> % Message not from hera_notify
             io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
             loop(Id)
     end.
 
-
 %============================================================================================================================================
-%======================================================== HELPER FUNCTIONS ==================================================================
+%======================================================== LOOP FUNCTIONS ==================================================================
 %============================================================================================================================================
 
-send_udp_message(Name, Message, Type) ->
-    hera_com:send_unicast(Name, Message, Type).
+add_device(Id, Name, SIp, Port) ->
+    SelfName = persistent_term:get(sensor_name),
+    case list_to_atom(Name) of 
+        SelfName -> % Don't register self
+            ok;
+        OName -> 
+            io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+            {ok, Ip} = inet:parse_address(SIp),
+            IntPort = list_to_integer(Port),
+            hera_com:add_device(OName, Ip, IntPort)
+    end,            
+    loop(Id).
 
-exit_measure(Name) ->
+store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
+    SelfName = persistent_term:get(sensor_name),
+    Posx = list_to_float(SPosx),
+    Posy = list_to_float(SPosy),
+    Angle = list_to_integer(SAngle),
+    Room = list_to_integer(SRoom),            
+    hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
+    loop(Id).
+
+store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
+    X = list_to_float(Xs),
+    Y = list_to_float(Ys),
+    H = list_to_float(Hs),
+    A = list_to_integer(As),
+    Room = list_to_integer(RoomS),
+    SensorName = list_to_atom("sensor_" ++ Ids),
+    hera_data:store(room, SensorName, 1, [Room]),
+    hera_data:store(pos, SensorName, 1, [X, Y, H, A]),
+    %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
+    loop(Id).
+
+start_measures(Id) ->
+    {ok, Angle_Pid} = hera:start_measure(target_angle, []),
+    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
+    {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
+    persistent_term:put(target_angle, Angle_Pid),
+    persistent_term:put(sonar_sensor, Sonar_Pid),
+    persistent_term:put(kalman_measure, Kalman_Pid),
+    [grisp_led:color(L, green) || L <- [1, 2]],
+    loop(Id).
+
+wait_before_measure(Id) ->
+    Pid = persistent_term:get(sonar_sensor, none),
+    case Pid of
+        none ->
+            io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
+            loop(Id);
+        _ ->
+            Pid ! {measure},
+            loop(Id)
+    end.
+
+reset_state(Id) ->
+    exit_measure_module(sonar_sensor),
+    exit_measure_module(target_angle),
+    exit_measure_module(kalman_measure),
+
+    timer:sleep(500),
+    reset_data(),
+
+    [grisp_led:flash(L, white, 1000) || L <- [1, 2]],      
+
+    discover_server(Id),            
+    io:format("[SENSOR] Waiting for start signal ...~n~n"),
+    loop(Id).
+
+reset_data() ->
+    persistent_term:erase(osensor),
+    persistent_term:erase(sonar_sensor),
+    hera_data:reset(),
+    io:format("[SENSOR] Data resetted~n~n").
+
+exit_measure_module(Name) ->
     Pid = persistent_term:get(Name, none),    
     case Pid of
         none ->
