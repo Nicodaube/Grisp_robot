@@ -4,6 +4,10 @@
 
 -export([init/1, measure/1]).
 
+%============================================================================================================================================
+%======================================================= HERA MEASURE BEHAVIOUR ==============================================================
+%============================================================================================================================================
+
 init(_Args) ->
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
     {ok, #{seq => 2}, #{
@@ -18,7 +22,6 @@ measure(State) ->
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
             Seq = maps:get(seq, State, 1),
             NewState = State#{seq => Seq +1},
-
             io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[OldX, OldY, OldAngle, OldRoom]),
             send_robot_pos([OldX, OldY, OldAngle, OldRoom]),
             {ok, [OldX, OldY, OldAngle, OldRoom], robot_pos, SensorName, NewState};
@@ -26,7 +29,10 @@ measure(State) ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
             {stop, no_robot_pos}
     end.
-       
+
+%============================================================================================================================================
+%======================================================= HELPER FUNC ========================================================================
+%============================================================================================================================================       
 
 send_robot_pos(Pos) ->
     Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
