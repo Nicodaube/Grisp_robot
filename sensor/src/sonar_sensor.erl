@@ -6,6 +6,7 @@
 -export([init/1, measure/1]).
 
 init(_Args) ->
+    timer:sleep(300),
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     {ok, #{seq => 1}, #{
         name => sonar_sensor,
@@ -27,7 +28,7 @@ measure(State) ->
                     timer:sleep(N div 2 + 50),
                     get_measure(State, SensorName)            
             after N + 50 -> % Timeout, can measure
-                io:format("[SONAR_SENOSR] Timeout~n"),                
+                io:format("[SONAR_SENSOR] Timeout~n"),                
                 hera_com:send_unicast(Osensor, "measure", "UTF8"),
                 get_measure(State, SensorName)
             end
