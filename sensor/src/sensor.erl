@@ -44,6 +44,7 @@ who_am_i() ->
 
 await_connection(Id) ->
     % Waiting for HERA to notify succesful connection
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     io:format("[SENSOR] WiFi setup starting...~n"),
     receive        
         {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
@@ -58,6 +59,7 @@ await_connection(Id) ->
 
 discover_server(Id) ->
     % Waits forever until the server sends a Ping
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     io:format("[SENSOR] Waiting for ping from server~n"),
     receive
         {hera_notify, ["ping", Name, SIp, Port]} -> % Received upon server ping reception
@@ -72,6 +74,7 @@ discover_server(Id) ->
 
 ack_loop(Id) ->
     % Tries to pair with the server by a Hello -> Ack
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
     receive
         {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
@@ -100,6 +103,10 @@ get_grisp_id() ->
     {ok, SUM}.
 
 send_udp_message(Name, Message, Type) ->
+    % Sends message
+    % @param Name : name of the device to send to (atom)
+    % @param Message : message to be sent (String/Tuple)
+    % @param Type : type of message, can be UTF8 or Binary (String)
     hera_com:send_unicast(Name, Message, Type).
     
 %============================================================================================================================================
@@ -107,6 +114,8 @@ send_udp_message(Name, Message, Type) ->
 %============================================================================================================================================
 
 loop(Id) ->
+    % Main Sensor loop
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     receive
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors 
             add_device(Id, Name, SIp, Port);          
@@ -136,10 +145,10 @@ loop(Id) ->
 
 add_device(Id, Name, SIp, SPort) ->
     % Adds a device to the list of known devices
-    % @param Id : Sensor's Id set by the jumpers
-    % @param Name : name of the device to register
-    % @param SIp : IP adress in a string form
-    % @param SPort : Port as a string
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param Name : name of the device to register (String)
+    % @param SIp : IP adress (String)
+    % @param SPort : Port (String)
     SelfName = persistent_term:get(sensor_name),
     case list_to_atom(Name) of 
         SelfName -> % Don't register self
@@ -154,11 +163,11 @@ add_device(Id, Name, SIp, SPort) ->
 
 store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     % Stores the initial robot position
-    % @param Id : Sensor's Id set by the jumpers
-    % @param SPosx : X axis position in string
-    % @param SPosY : Y axis position in string
-    % @param SAngle : Robot angle in string
-    % @param SRoom : Robot room position in string
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param SPosx : X axis position (String)
+    % @param SPosY : Y axis position (String)
+    % @param SAngle : Robot angle (String)
+    % @param SRoom : Robot room position (String)
     SelfName = persistent_term:get(sensor_name),
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
@@ -169,12 +178,12 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     % Store the position of a sensor
-    % @param Id : Sensor's Id set by the jumpers
-    % @param Xs : X axis position in string
-    % @param Ys : Y axis position in string
-    % @param Hs : Z axis position in string
-    % @param As : Angle of sensor in string
-    % @param Rooms : Room number in string
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param Xs : X axis position (String)
+    % @param Ys : Y axis position (String)
+    % @param Hs : Z axis position (String)
+    % @param As : Angle of sensor (String)
+    % @param Rooms : Room number (String)
     X = list_to_float(Xs),
     Y = list_to_float(Ys),
     H = list_to_float(Hs),
@@ -188,7 +197,7 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
 
 start_measures(Id) ->
     % Launch all the hera_measure modules to gather data
-    % @param Id : Sensor's Id set by the jumpers
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     {ok, Angle_Pid} = hera:start_measure(target_angle, []),
     {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
@@ -200,7 +209,7 @@ start_measures(Id) ->
 
 wait_before_measure(Id) ->
     % Sends a message to the sonar module to wait before measuring
-    % @param Id : Sensor's Id set by the jumpers
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     Pid = persistent_term:get(sonar_sensor, none),
     case Pid of
         none ->
@@ -213,7 +222,7 @@ wait_before_measure(Id) ->
 
 reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
-    % @param Id : Sensor's Id set by the jumpers
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     exit_measure_module(sonar_sensor),
     exit_measure_module(target_angle),
     exit_measure_module(kalman_measure),
@@ -236,7 +245,7 @@ reset_data() ->
 
 exit_measure_module(Name) ->
     % Kills a module stored in persistent term
-    % @param Name : the name of the module as an atom
+    % @param Name : the name of the module (atom)
     Pid = persistent_term:get(Name, none),    
     case Pid of
         none ->
