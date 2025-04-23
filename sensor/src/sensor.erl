@@ -132,12 +132,13 @@ loop(Id) ->
             %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
             loop(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
-            hera:start_measure(target_angle, []),
-            timer:sleep(300),
-            {ok, Pid} = hera:start_measure(sonar_sensor, []),
-            persistent_term:put(sonar_sensor, Pid),
+            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
+            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
+            {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
+            persistent_term:put(target_angle, Angle_Pid),
+            persistent_term:put(sonar_sensor, Sonar_Pid),
+            persistent_term:put(kalman_measure, Kalman_Pid),
             [grisp_led:color(L, green) || L <- [1, 2]],
-            hera:start_measure(kalman_measure, []),
             loop(Id);
         {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
             Pid = persistent_term:get(sonar_sensor, none),
@@ -150,17 +151,13 @@ loop(Id) ->
                     loop(Id)
             end;
         {hera_notify, ["Exit"]} ->
-            SensorID = persistent_term:get(sonar_sensor, none),
-            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
-            case SensorID of
-                none ->
-                    ok;
-                _ -> 
-                    exit(SensorID, shutdown)
-            end,
+            exit_measure(sonar_sensor),
+            exit_measure(target_angle),
+            exit_measure(kalman_measure),
             timer:sleep(500),
-            reset_data(),            
-            discover_server(Id),
+            reset_data(),
+            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],            
+            discover_server(Id),            
             io:format("[SENSOR] Waiting for start signal ...~n~n"),
             loop(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
@@ -180,3 +177,12 @@ loop(Id) ->
 
 send_udp_message(Name, Message, Type) ->
     hera_com:send_unicast(Name, Message, Type).
+
+exit_measure(Name) ->
+    Pid = persistent_term:get(Name, none),    
+    case Pid of
+        none ->
+            ok;
+        _ -> 
+            exit(Pid, shutdown)
+    end.
