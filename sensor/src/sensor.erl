@@ -137,6 +137,7 @@ loop(Id) ->
             {ok, Pid} = hera:start_measure(sonar_sensor, []),
             persistent_term:put(sonar_sensor, Pid),
             [grisp_led:color(L, green) || L <- [1, 2]],
+            hera:start_measure(kalman_measure, []),
             loop(Id);
         {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
             Pid = persistent_term:get(sonar_sensor, none),
