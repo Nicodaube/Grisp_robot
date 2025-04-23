@@ -29,13 +29,12 @@ stop(_State) -> ok.
 %============================================================================================================================================
 
 config() ->
-    wifi_setup(),
+    who_am_i(),
     Id = persistent_term:get(id),
     io:format("[SENSOR] Waiting for start signal ...~n~n"),
-    loop(Id),
-    {ok, self()}.
+    loop(Id).
 
-wifi_setup() ->
+who_am_i() ->
     % Computing sensor id and storing it in persistent data
     {ok, Id} = get_grisp_id(),
     io:format("[SENSOR] sensor id :~p~n",[Id]),
@@ -44,6 +43,7 @@ wifi_setup() ->
     await_connection(Id).
 
 await_connection(Id) ->
+    % Waiting for HERA to notify succesful connection
     io:format("[SENSOR] WiFi setup starting...~n"),
     receive        
         {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
@@ -57,6 +57,7 @@ await_connection(Id) ->
     end.
 
 discover_server(Id) ->
+    % Waits forever until the server sends a Ping
     io:format("[SENSOR] Waiting for ping from server~n"),
     receive
         {hera_notify, ["ping", Name, SIp, Port]} -> % Received upon server ping reception
@@ -70,6 +71,7 @@ discover_server(Id) ->
     end.
 
 ack_loop(Id) ->
+    % Tries to pair with the server by a Hello -> Ack
     send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
     receive
         {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
@@ -81,6 +83,7 @@ ack_loop(Id) ->
     end.
 
 get_grisp_id() ->
+    % Computes the Id of the GRiSP board using the jumpers
     JMP1 = grisp_gpio:open(jumper_1, #{mode => input}),
     JMP2 = grisp_gpio:open(jumper_2, #{mode => input}),
     JMP3 = grisp_gpio:open(jumper_3, #{mode => input}),
@@ -131,7 +134,12 @@ loop(Id) ->
 %======================================================== LOOP FUNCTIONS ==================================================================
 %============================================================================================================================================
 
-add_device(Id, Name, SIp, Port) ->
+add_device(Id, Name, SIp, SPort) ->
+    % Adds a device to the list of known devices
+    % @param Id : Sensor's Id set by the jumpers
+    % @param Name : name of the device to register
+    % @param SIp : IP adress in a string form
+    % @param SPort : Port as a string
     SelfName = persistent_term:get(sensor_name),
     case list_to_atom(Name) of 
         SelfName -> % Don't register self
@@ -139,12 +147,18 @@ add_device(Id, Name, SIp, Port) ->
         OName -> 
             io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
             {ok, Ip} = inet:parse_address(SIp),
-            IntPort = list_to_integer(Port),
-            hera_com:add_device(OName, Ip, IntPort)
+            Port = list_to_integer(SPort),
+            hera_com:add_device(OName, Ip, Port)
     end,            
     loop(Id).
 
 store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
+    % Stores the initial robot position
+    % @param Id : Sensor's Id set by the jumpers
+    % @param SPosx : X axis position in string
+    % @param SPosY : Y axis position in string
+    % @param SAngle : Robot angle in string
+    % @param SRoom : Robot room position in string
     SelfName = persistent_term:get(sensor_name),
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
@@ -154,6 +168,13 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     loop(Id).
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
+    % Store the position of a sensor
+    % @param Id : Sensor's Id set by the jumpers
+    % @param Xs : X axis position in string
+    % @param Ys : Y axis position in string
+    % @param Hs : Z axis position in string
+    % @param As : Angle of sensor in string
+    % @param Rooms : Room number in string
     X = list_to_float(Xs),
     Y = list_to_float(Ys),
     H = list_to_float(Hs),
@@ -166,6 +187,8 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     loop(Id).
 
 start_measures(Id) ->
+    % Launch all the hera_measure modules to gather data
+    % @param Id : Sensor's Id set by the jumpers
     {ok, Angle_Pid} = hera:start_measure(target_angle, []),
     {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
@@ -176,6 +199,8 @@ start_measures(Id) ->
     loop(Id).
 
 wait_before_measure(Id) ->
+    % Sends a message to the sonar module to wait before measuring
+    % @param Id : Sensor's Id set by the jumpers
     Pid = persistent_term:get(sonar_sensor, none),
     case Pid of
         none ->
@@ -187,6 +212,8 @@ wait_before_measure(Id) ->
     end.
 
 reset_state(Id) ->
+    % Kills all hera_measures modules, resets all data and jump back to server discovery
+    % @param Id : Sensor's Id set by the jumpers
     exit_measure_module(sonar_sensor),
     exit_measure_module(target_angle),
     exit_measure_module(kalman_measure),
@@ -201,12 +228,15 @@ reset_state(Id) ->
     loop(Id).
 
 reset_data() ->
+    % Delete all config dependent and hera_measures data
     persistent_term:erase(osensor),
     persistent_term:erase(sonar_sensor),
     hera_data:reset(),
     io:format("[SENSOR] Data resetted~n~n").
 
 exit_measure_module(Name) ->
+    % Kills a module stored in persistent term
+    % @param Name : the name of the module as an atom
     Pid = persistent_term:get(Name, none),    
     case Pid of
         none ->
