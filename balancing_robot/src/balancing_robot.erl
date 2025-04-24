@@ -15,6 +15,7 @@
 
 % Application start callback
 start(_Type, _Args) ->
+    io:format("[ROBOT] Starting ...~n"),
     {ok, Supervisor} = balancing_robot_sup:start_link(), % Start the supervisor
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
 
@@ -39,12 +40,14 @@ config() ->
     persistent_term:put(i2c, I2Cbus),
 
     hera_subscribe:subscribe(self()),
-    {ok, Gyro_Pid} = hera_measure:start_measure(gyroscope_measure, []),
-    timer:sleep(500),
-    {ok, Kal_Pid} = hera_measure:start_measure(kalman_stability, []),
+    {ok, Gyro_Pid} = hera:start_measure(gyroscope_measure, []),
+    timer:sleep(5000),    
+    {ok, Kal_Pid} = hera:start_measure(kalman_stability, []),
 
     persistent_term:put(hera_gyro, Gyro_Pid),
-    persistent_term:put(hera_kal, Kal_Pid),    
+    persistent_term:put(hera_kal, Kal_Pid),
+    timer:sleep(1000),
+    robot_init(),
     ok.
 
 who_am_i() ->
@@ -113,7 +116,7 @@ robot_init() ->
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     persistent_term:put(pid_speed, Pid_Speed),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-    persistent_term:put(pid_stability, pid_stability),
+    persistent_term:put(pid_stability, Pid_Stability),
 
     io:format("[ROBOT] Pid of the speed controller: ~p.~n", [Pid_Speed]),
     io:format("[ROBOT] Pid of the stability controller: ~p.~n", [Pid_Stability]),
@@ -137,15 +140,15 @@ robot_main(State) ->
     {Speed, Arm_Ready, Switch, Test, Get_Up, Adv_V_Goal, Turn_V_Goal} = i2C_data(),
 
     % Select between kalman and comp filter
-    {Tk, Xk, _} = hera_data:get(k_stability_state),
-    {_, Angle_Complem, _} = hera_data:get(comp_filter_state),
+    [{_, _, _, [Tk, Xk, _]}] = hera_data:get(k_stability_state),
+    [{_, _, _, [_, Angle_Complem, _]}] = hera_data:get(comp_filter_state),
     [Th_Kalman, _W_Kalman] = mat:to_array(Xk),
     Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
     Angle = helper_module:select_angle(Switch, Angle_Kalman, Angle_Complem),  
 
     Pid_Speed = persistent_term:get(pid_speed),
     Pid_Stability = persistent_term:get(pid_stability),
-    Dt = hera_data:get(delta_time),
+    [{_, _, _, [Dt]}] = hera_data:get(delta_time),
 
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller(
         {Dt, Angle, Speed}, 
@@ -255,21 +258,21 @@ get_robot_state(Robot_State) -> % {Robot_state, Robot_Up, Get_Up, Arm_ready, Ang
 get_output_state(State, Move_direction) ->
     case State of
         rest -> 
-            {0, 0, 0, 0, Move_direction, 0, 0, 0};
+            [0, 0, 0, 0, Move_direction, 0, 0, 0];
         raising -> 
-            {1, 0, 1, 0, Move_direction, 0, 0, 0};
+            [1, 0, 1, 0, Move_direction, 0, 0, 0];
         stand_up -> 
-            {1, 0, 0, 1, Move_direction, 0, 0, 0};
+            [1, 0, 0, 1, Move_direction, 0, 0, 0];
         wait_for_extend -> 
-            {1, 0, 1, 1, Move_direction, 0, 0, 0};
+            [1, 0, 1, 1, Move_direction, 0, 0, 0];
         prepare_arms -> 
-            {1, 0, 1, 1, Move_direction, 0, 0, 0};
+            [1, 0, 1, 1, Move_direction, 0, 0, 0];
         free_fall -> 
-            {1, 1, 1, 1, Move_direction, 0, 0, 0};
+            [1, 1, 1, 1, Move_direction, 0, 0, 0];
         wait_for_retract -> 
-            {1, 0, 0, 0, Move_direction, 0, 0, 0};
+            [1, 0, 0, 0, Move_direction, 0, 0, 0];
         soft_fall -> 
-            {1, 0, 0, 0, Move_direction, 0, 0, 0}
+            [1, 0, 0, 0, Move_direction, 0, 0, 0]
     end.
 
 get_byte(List) ->
@@ -278,9 +281,9 @@ get_byte(List) ->
 
 update_frequency(Dt)->    
     T_End_New = erlang:system_time()/1.0e6,
-    {N, Freq, Mean_Freq, T_End} = hera_data:get(frequency),
+    [{ _, _, Seq, [N, Freq, Mean_Freq, T_End]}] = hera_data:get(frequency),
     {N_New, Freq_New, Mean_Freq_New} = helper_module:frequency_computation(Dt, N, Freq, Mean_Freq),
-    hera_data:store(frequency, self(), 1, [N_New, Freq_New, Mean_Freq_New, T_End_New]),
+    hera_data:store(frequency, node(), Seq+1, [N_New, Freq_New, Mean_Freq_New, T_End_New]),
     {N, T_End}.
 
 manage_logging_transition(false, true) ->

@@ -15,7 +15,7 @@ init(_Args) ->
     {ok, #{seq => 2}, #{
         name => gyroscope,
         iter => infinity,
-        timeout => 50
+        timeout => 500
     }}.
     
 measure(State) ->
@@ -25,7 +25,7 @@ measure(State) ->
     NewState = State#{seq => Seq +1},
     io:format("[GYROSCOPE] measured Gy : ~p, Ax : ~p, Az : ~p~n", [Gy, Ax, Az]),
 
-    hera_data:store(gyroscope, self(), Seq, [Gy, Ax, Az]),
+    hera_data:store(gyroscope, node(), Seq, [Gy, Ax, Az]),
     {ok, [Gy, Ax, Az], gyroscope, self(), NewState}.
 
 
@@ -38,8 +38,8 @@ calibrate() ->
     io:format("[GYROSCOPE_MEASURE] Calibrating... ~n"),
     N = 500,
     [grisp_led:color(L, red) || L <- [1, 2]],
-    Data = [list_to_tuple(pmod_nav:read(acc, [out_y_g])) || _ <- lists:seq(1, N)],
+    Data = [list_to_tuple(pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])) || _ <- lists:seq(1, N)],
     {_, Y, _} = lists:unzip3(Data),
     io:format("[GYROSCOPE_MEASURE] Done calibrating~n"),
     Gy0 = lists:sum(Y) / N,
-    hera_data:store(gyroscope, self(), 1, [0.0, Gy0, 0.0]).
+    hera_data:store(gyroscope, node(), 1, [0.0, Gy0, 0.0]).
