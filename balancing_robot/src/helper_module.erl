@@ -1,12 +1,11 @@
 -module(helper_module).
 
--export([kalman_angle/7, complem_angle/1, select_angle/3, speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1]).
+-export([complem_angle/1, select_angle/3, speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, flicker_led/2]).
+-define(FREQ_WINDOW, 100).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Macros
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
--define(DEG_TO_RAD, math:pi() / 180).
 
 %Advance constant
 -define(ADV_V_MAX, 30.0).
@@ -24,52 +23,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
-    % Measurement noise covariance matrix
-    R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),
-
-    % Process noise covariance matrix
-    Q = mat:matrix([[3.0e-5, 0.0], [0.0, 10.0]]),
-
-    % State transition function
-    F = fun (X) -> 
-            [Th, W] = mat:to_array(X),
-            mat:matrix([ 	[Th + Dt * W],  % Update angle based on angular velocity
-                            [W          ]  % Angular velocity remains constant
-                        ])
-        end,
-
-    % Jacobian of the state transition function
-    Jf = fun (X) -> 
-            [_Th, _W] = mat:to_array(X),
-            mat:matrix([  	[1, Dt],  % Partial derivatives of the state transition function
-                            [0, 1 ]  % with respect to the state variables
-                        ])
-         end,
-
-    % Measurement function
-    H = fun (X) -> 
-            [Th, W] = mat:to_array(X),
-            mat:matrix([ 	[Th],  % Measurement of angle
-                            [W ]   % Measurement of angular velocity
-                        ])
-        end,
-
-    % Jacobian of the measurement function
-    Jh = fun (X) -> 
-            [_Th, _W] = mat:to_array(X),
-            mat:matrix([  	[1, 0],  % Partial derivatives of the measurement function
-                            [0, 1]  % with respect to the state variables
-                        ])
-         end,
-
-    % Measurement vector
-    Z = mat:matrix([[math:atan(Az / (-Ax))],  % Angle from accelerometer
-                    [(Gy - Gy0) * ?DEG_TO_RAD]]),  % Angular velocity from gyroscope
-
-    % Perform the Extended Kalman Filter update
-    kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z).
 
 complem_angle({Dt, Ax, Az, Gy, Gy0, K, Angle_Complem, Angle_Rate}) ->
 
@@ -145,19 +98,12 @@ turn_ref(Left, Right) ->
 %% @param Mean_Freq The current mean frequency.
 %% @return A tuple `{N_New, Freq_New, Mean_Freq_New}` containing the updated counter, frequency, and mean frequency.
 frequency_computation(Dt, N, Freq, Mean_Freq) ->
-    if 
-        % Reset the counter and frequency accumulator when N reaches 100
-        N == 100 ->
-            N_New = 0,
-            Freq_New = 0,
-            Mean_Freq_New = Freq;
+    if
+        N == ?FREQ_WINDOW ->
+            {0, 0, Freq};  % Reset window
         true ->
-            % Update the counter, frequency, and mean frequency
-            N_New = N + 1,
-            Freq_New = ((Freq * N) + (1 / Dt)) / (N + 1),
-            Mean_Freq_New = Mean_Freq
-    end,
-    {N_New, Freq_New, Mean_Freq_New}.
+            {N + 1, ((Freq * N) + (1 / Dt)) / (N + 1), Mean_Freq}
+    end.
 
 %% @doc Pauses execution for `T` milliseconds.
 wait(T) -> wait_help(erlang:system_time() / 1.0e6, T).
@@ -165,12 +111,19 @@ wait(T) -> wait_help(erlang:system_time() / 1.0e6, T).
 wait_help(Tnow, Tend) when Tnow >= Tend -> ok;
 wait_help(_, Tend) -> wait_help(erlang:system_time() / 1.0e6, Tend).
 
-%% @doc Transforms a list of 8 bits into a single byte.
-%% @spec get_byte([0 | 1, 0 | 1, 0 | 1, 0 | 1, 0 | 1, 0 | 1, 0 | 1, 0 | 1]) -> integer()
-%% @param List A list of 8 binary digits (0s and 1s) representing the bits of a byte.
-%% @return An integer representing the byte value calculated from the binary digits.
-%Transforms a list of 8 bits into a byte
-get_byte(List) ->
-    [A, B, C, D, E, F, G, H] = List,
-    A*128 + B*64 + C*32 + D*16 + E*8 + F*4 + G*2 + H. 
+%% @doc Manages LED flickering pattern during active logging.
+%% @param Logging - Boolean flag indicating whether logging is active.
+%% @param N - The current loop iteration count.
+%% @return - The updated LED state based on the logging status and loop count.
+flicker_led(true, N) ->
+    if
+        N rem 9 < 4 ->
+            [grisp_led:color(L, yellow) || L <-[1,2]];
+        true ->
+            [grisp_led:color(L, {0,0,0}) || L <-[1,2]]
+    end;
+
+flicker_led(false, _) ->
+    ok.
+
 
