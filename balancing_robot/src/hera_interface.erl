@@ -9,50 +9,20 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 init(_Args) ->
-	% Define the specification map for the measurement process
-	Spec = #{name => kaltest, iter => infinity, sync => false}, % keys: name, iter, sync and values: kaltest, infinity, false
 	
-	% Get the current system time in milliseconds
-	T0 = erlang:system_time() / 1.0e6,
-	
-	% Spawn the robot process and get its PID
-	Robot_Pid = spawn(main_loop, robot_init, [self()]), % Spawn the function robot_init in the main_loop module with the argument self()
-	
+	Init_time = erlang:system_time() / 1.0e6,% Get the current system time in milliseconds
+		
 	% Define the names and length of the data to be logged
 	Names = "T,Freq,Gy,Acc,CtrlByte,AngleAccelerometer,AngleKalman,AngleComplem,Vref,Select,Adv_Ref,Turn_Ref,Speed",
 	Len = 13,
-
-	% Print the PID of the Hera interface
-	io:format("[Hera] Pid of the Hera interface: ~p.~n", [self()]),
 	
 	% Set the color of the LEDs
-	grisp_led:color(1, {1, 1, 0}), % Set LED 1 to yellow
-	grisp_led:color(2, {1, 1, 0}), % Set LED 2 to yellow
+	[grisp_led:color(L, yellow) || L <- [1, 2]],
 
-	% Return the initial state and specification
-	%% @doc
-	%% Returns a tuple containing:
-	%% - `ok`: an atom indicating successful operation.
-	%% - `{Robot_Pid, {Names, Len, 1}, T0, 0, 0, 200, T0}`: a tuple with the following elements:
-	%%   - `Robot_Pid`: the process identifier of the robot.
-	%%   - `{Names, Len, 1}`: a tuple containing:
-	%%     - `Names`: a list of names.
-	%%     - `Len`: the length of the list of names.
-	%%     - `1`: a constant value.
-	%%   - `T0`: a timestamp or initial time value.
-	%%   - `0`: a placeholder or initial value.
-	%%   - `0`: a placeholder or initial value.
-	%%   - `200`: a constant value.
-	%%   - `T0`: a timestamp or initial time value (same as the previous `T0`).
-	%% - `Spec`: a specification or additional information related to the operation.
-	{ok, {Robot_Pid, {Names, Len, 1}, T0, 0, 0, 200, T0}, Spec}.
+	{ok, {Robot_Pid, {Names, Len, 1}, Init_time, 0, 0, 200, Init_time}, #{name => kaltest, iter => infinity, sync => false}}.
 
 
 measure({Robot_Pid, {Names, Len, File_Number}, StartTime, N, Freq, Mean_Freq, T0}) ->
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%% Interface with the robot Features %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 	% Send a message to the robot process (main_loop) to get all data
 	Robot_Pid ! {self(), get_all_data},

@@ -1,6 +1,6 @@
 -module(helper_module).
 
--export([calibrate/0, kalman_angle/7, complem_angle/1, select_angle/3, speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1]).
+-export([kalman_angle/7, complem_angle/1, select_angle/3, speed_ref/2, turn_ref/2, frequency_computation/4, wait/1, get_byte/1]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Macros
@@ -24,19 +24,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Internal functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-calibrate() ->
-    % Number of samples to collect for calibration
-    N = 500,
-
-    % Collect N samples of accelerometer data (x, y, z) from the pmod_nav module
-    Data = [list_to_tuple(pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])) || _ <- lists:seq(1, N)],
-
-    % Separate the collected data into three lists: X, Y, Z
-    {X, Y, Z} = lists:unzip3(Data),
-
-    % Compute the average of each axis to determine the calibration offsets
-    [lists:sum(X) / N, lists:sum(Y) / N, lists:sum(Z) / N]. %[Gx0, Gy0, Gz0]
 
 kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
     % Measurement noise covariance matrix

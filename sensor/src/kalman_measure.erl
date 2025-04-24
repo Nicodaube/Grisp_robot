@@ -22,6 +22,8 @@ measure(State) ->
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
             Seq = maps:get(seq, State, 1),
             NewState = State#{seq => Seq +1},
+
+            
             io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[OldX, OldY, OldAngle, OldRoom]),
             send_robot_pos([OldX, OldY, OldAngle, OldRoom]),
             {ok, [OldX, OldY, OldAngle, OldRoom], robot_pos, SensorName, NewState};
