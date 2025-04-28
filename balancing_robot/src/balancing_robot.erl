@@ -41,7 +41,7 @@ config() ->
 
     hera_subscribe:subscribe(self()),
     {ok, Gyro_Pid} = hera:start_measure(gyroscope_measure, []),
-    timer:sleep(5000),    
+    timer:sleep(2000),    
     {ok, Kal_Pid} = hera:start_measure(kalman_stability, []),
 
     persistent_term:put(hera_gyro, Gyro_Pid),
@@ -49,60 +49,6 @@ config() ->
     timer:sleep(1000),
     robot_init(),
     ok.
-
-who_am_i() ->
-    persistent_term:put(sensor_name, robot),
-    await_connection().
-
-await_connection() ->
-    % Waiting for HERA to notify succesful connection
-    % @param Id : Sensor's Id set by the jumpers (Integer)
-    io:format("[ROBOT] WiFi setup starting...~n"),
-    receive        
-        {hera_notify, "connected"} -> % Received when hera_com managed to connect to the network
-            io:format("[ROBOT] WiFi setup done~n~n"),
-            [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
-            discover_server()
-    after 18000 ->
-        io:format("[ROBOT] WiFi setup failed:~n~n"),
-        [grisp_led:flash(L, red, 750) || L <- [1, 2]],
-        await_connection()
-    end.
-
-discover_server() ->
-    % Waits forever until the server sends a Ping
-    % @param Id : Sensor's Id set by the jumpers (Integer)
-    io:format("[ROBOT] Waiting for ping from server~n"),
-    receive
-        {hera_notify, ["ping", Name, SIp, Port]} -> % Received upon server ping reception
-            {ok, Ip} = inet:parse_address(SIp),
-            IntPort = list_to_integer(Port),
-            hera_com:add_device(list_to_atom(Name), Ip, IntPort),
-            ack_loop()
-    after 9000 ->
-        io:format("[ROBOT] no ping from server~n"),
-        discover_server()
-    end.
-
-ack_loop() ->
-    % Tries to pair with the server by a Hello -> Ack
-    % @param Id : Sensor's Id set by the jumpers (Integer)
-    send_udp_message(server, "Hello from robot", "UTF8"),
-    receive
-        {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
-            io:format("[ROBOT] Received ACK from server~n"),
-            [grisp_led:flash(L, green, 1000) || L <- [1, 2]],
-            ok
-    after 5000 ->
-        ack_loop()
-    end.
-
-send_udp_message(Name, Message, Type) ->
-    % Sends message
-    % @param Name : name of the device to send to (atom)
-    % @param Message : message to be sent (String/Tuple)
-    % @param Type : type of message, can be UTF8 or Binary (String)
-    hera_com:send_unicast(Name, Message, Type).
     
 
 %============================================================================================================================================
@@ -110,7 +56,6 @@ send_udp_message(Name, Message, Type) ->
 %============================================================================================================================================
 
 robot_init() ->
-    process_flag(priority, max), %Sets process priority to max
 
     % Initialize PID controllers for speed and stability
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
@@ -137,14 +82,14 @@ robot_main(State) ->
     {Robot_state, Robot_Up} = maps:get(robot_state, State),
     {Logging, Log_End, Log_List} = maps:get(logging_state, State),
 
-    {Speed, Arm_Ready, Switch, Test, Get_Up, Adv_V_Goal, Turn_V_Goal} = i2C_data(),
+    {Speed, Arm_Ready, _, _, Get_Up, Adv_V_Goal, Turn_V_Goal} = i2C_data(),
 
     % Select between kalman and comp filter
     [{_, _, _, [Tk, Xk, _]}] = hera_data:get(k_stability_state),
-    [{_, _, _, [_, Angle_Complem, _]}] = hera_data:get(comp_filter_state),
+    %[{_, _, _, [_, Angle_Complem, _]}] = hera_data:get(comp_filter_state),
     [Th_Kalman, _W_Kalman] = mat:to_array(Xk),
     Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
-    Angle = helper_module:select_angle(Switch, Angle_Kalman, Angle_Complem),  
+    Angle = Angle_Kalman,
 
     Pid_Speed = persistent_term:get(pid_speed),
     Pid_Stability = persistent_term:get(pid_stability),
@@ -170,21 +115,21 @@ robot_main(State) ->
     I2Cbus = persistent_term:get(i2c),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
 
-    {N, T_End} = update_frequency(Dt),    
+    {_, T_End} = update_frequency(Dt),    
 
     % Determine the end time for logging based on the test mode.
-    Log_End_New = if Test -> erlang:system_time()/1.0e6 + ?LOG_DURATION; true -> Log_End end,
-    Logging_New = (erlang:system_time()/1.0e6) < Log_End_New,
+    %Log_End_New = if Test -> erlang:system_time()/1.0e6 + ?LOG_DURATION; true -> Log_End end,
+    %Logging_New = (erlang:system_time()/1.0e6) < Log_End_New,
 
-    helper_module:flicker_led(Logging_New, N),
+    %helper_module:flicker_led(Logging_New, N),
 
-    manage_logging_transition(Logging, Logging_New),    
+    %manage_logging_transition(Logging, Logging_New),    
 
     stabilize_frequency(T_End, Tk),
 
     New_State = State#{
         robot_state => {New_robot_state, Robot_is_Up},
-        logging_state => {Logging_New, Log_End_New, Log_List},
+        logging_state => {Logging, Log_End, Log_List},
         movement_controls => {Adv_V_Ref_New, Turn_V_Ref_New}},
    
     robot_main(New_State).
@@ -284,6 +229,7 @@ update_frequency(Dt)->
     [{ _, _, Seq, [N, Freq, Mean_Freq, T_End]}] = hera_data:get(frequency),
     {N_New, Freq_New, Mean_Freq_New} = helper_module:frequency_computation(Dt, N, Freq, Mean_Freq),
     hera_data:store(frequency, node(), Seq+1, [N_New, Freq_New, Mean_Freq_New, T_End_New]),
+    io:format("[ROBOT] Freq : ~p~n",[Mean_Freq_New]),
     {N, T_End}.
 
 manage_logging_transition(false, true) ->

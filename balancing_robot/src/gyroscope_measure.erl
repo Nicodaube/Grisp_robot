@@ -15,7 +15,7 @@ init(_Args) ->
     {ok, #{seq => 2}, #{
         name => gyroscope,
         iter => infinity,
-        timeout => 500
+        timeout => 5
     }}.
     
 measure(State) ->
@@ -23,7 +23,7 @@ measure(State) ->
     Seq = maps:get(seq, State),
 
     NewState = State#{seq => Seq +1},
-    io:format("[GYROSCOPE] measured Gy : ~p, Ax : ~p, Az : ~p~n", [Gy, Ax, Az]),
+    %io:format("[GYROSCOPE] measured Gy : ~p, Ax : ~p, Az : ~p~n", [Gy, Ax, Az]),
 
     hera_data:store(gyroscope, node(), Seq, [Gy, Ax, Az]),
     {ok, [Gy, Ax, Az], gyroscope, self(), NewState}.
