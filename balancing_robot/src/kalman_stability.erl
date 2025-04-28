@@ -23,12 +23,14 @@ init(_Args) ->
     hera_data:store(k_stability_state, node(), 1, [T0, X0, P0]),    
     [{_, _, _, [_, Gy0, _]}] = hera_data:get(gyroscope),
     persistent_term:put(gy0, Gy0),
+
+    init_kalman_matrices(),
     %hera_data:store(comp_filter_state, node(), 1, [Gy0, 0.0, 0.0]),
     
     {ok, #{seq => 2}, #{
         name => kalman_stability,
         iter => infinity,
-        timeout => 5
+        timeout => 1
     }}.
     
 measure(State) ->
@@ -38,11 +40,10 @@ measure(State) ->
     Gyk = persistent_term:get(gy0),
 
     [{_, Seq, _, [Tk, Xk, Pk]}] = hera_data:get(k_stability_state),
+    [{_, _, _, [Gyk_1, Axk_1, Azk_1]}] = hera_data:get(gyroscope),
     %[{_, _, _, [Gyk, Angle_Complem, Angle_Rate]}] = hera_data:get(comp_filter_state),
 
     {Tk_1, Dt} = get_delta_time(Tk),
-    [{_, _, _, [Gyk_1, Axk_1, Azk_1]}] = hera_data:get(gyroscope),
-
     {X1, P1} = kalman_angle(Dt, Axk_1, Azk_1, Gyk_1, Gyk, Xk, Pk),
     %[{ _, _, _, [_, _, Mean_Freq, _]}] = hera_data:get(frequency),
 
@@ -70,45 +71,51 @@ get_delta_time(Tk) ->
     Dt = (Tk_1 - Tk)/1000.0,
     {Tk_1, Dt}.
 
-
-kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
-    % Measurement noise covariance matrix
+% Measurement noise covariance matrix
+init_kalman_matrices() ->
     R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),
 
     % Process noise covariance matrix
     Q = mat:matrix([[3.0e-5, 0.0], [0.0, 10.0]]),
 
-    % State transition function
-    F = fun (X) -> 
-            [Th, W] = mat:to_array(X),
-            mat:matrix([ 	[Th + Dt * W],  % Update angle based on angular velocity
-                            [W          ]  % Angular velocity remains constant
-                        ])
-        end,
-
-    % Jacobian of the state transition function
-    Jf = fun (X) -> 
-            [_Th, _W] = mat:to_array(X),
-            mat:matrix([  	[1, Dt],  % Partial derivatives of the state transition function
-                            [0, 1 ]  % with respect to the state variables
-                        ])
-            end,
-
     % Measurement function
     H = fun (X) -> 
-            [Th, W] = mat:to_array(X),
-            mat:matrix([ 	[Th],  % Measurement of angle
-                            [W ]   % Measurement of angular velocity
-                        ])
-        end,
+        [Th, W] = mat:to_array(X),
+        mat:matrix([ 	[Th],  % Measurement of angle
+                        [W ]   % Measurement of angular velocity
+                    ])
+    end,
 
     % Jacobian of the measurement function
     Jh = fun (X) -> 
-            [_Th, _W] = mat:to_array(X),
-            mat:matrix([  	[1, 0],  % Partial derivatives of the measurement function
-                            [0, 1]  % with respect to the state variables
-                        ])
-            end,
+        [_Th, _W] = mat:to_array(X),
+        mat:matrix([  	[1, 0],  % Partial derivatives of the measurement function
+                        [0, 1]  % with respect to the state variables
+                    ])
+        end,
+
+    persistent_term:put(kalman_matrices, [R, Q, H, Jh]).
+
+
+kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
+    [R, Q, H, Jh] = persistent_term:get(kalman_matrices),
+
+    % State transition function
+    F = fun (X) -> 
+        [Th, W] = mat:to_array(X),
+        mat:matrix([ 	[Th + Dt * W],  % Update angle based on angular velocity
+                        [W          ]  % Angular velocity remains constant
+                    ])
+    end,
+
+    % Jacobian of the state transition function
+    Jf = fun (X) -> 
+        [_Th, _W] = mat:to_array(X),
+        mat:matrix([  	[1, Dt],  % Partial derivatives of the state transition function
+                        [0, 1 ]  % with respect to the state variables
+                    ])
+        end,
+
 
     % Measurement vector
     Z = mat:matrix([[math:atan(Az / (-Ax))],  % Angle from accelerometer

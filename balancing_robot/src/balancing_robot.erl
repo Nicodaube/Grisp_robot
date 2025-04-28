@@ -115,15 +115,7 @@ robot_main(State) ->
     I2Cbus = persistent_term:get(i2c),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
 
-    {_, T_End} = update_frequency(Dt),    
-
-    % Determine the end time for logging based on the test mode.
-    %Log_End_New = if Test -> erlang:system_time()/1.0e6 + ?LOG_DURATION; true -> Log_End end,
-    %Logging_New = (erlang:system_time()/1.0e6) < Log_End_New,
-
-    %helper_module:flicker_led(Logging_New, N),
-
-    %manage_logging_transition(Logging, Logging_New),    
+    {_, T_End} = update_frequency(Dt),
 
     stabilize_frequency(T_End, Tk),
 
@@ -231,34 +223,6 @@ update_frequency(Dt)->
     hera_data:store(frequency, node(), Seq+1, [N_New, Freq_New, Mean_Freq_New, T_End_New]),
     io:format("[ROBOT] Freq : ~p~n",[Mean_Freq_New]),
     {N, T_End}.
-
-manage_logging_transition(false, true) ->
-    % Transition from not logging to logging
-    Hera_pid = persistent_term:get(hera_pid),
-    Hera_pid ! {self(), start_log};
-
-manage_logging_transition(true, false) ->
-    % Transition from logging to not logging
-    [grisp_led:color(L, yellow) || L <-[1,2]],
-    Hera_pid = persistent_term:get(hera_pid),
-    Hera_pid ! {self(), stop_log};
-
-manage_logging_transition(_, _) ->
-    % No change
-    ok.
-
-update_log_list(Logging_New, Log_List, New_Data) ->
-    receive
-        {From, log_values} ->
-            From ! {self(), log, Log_List}
-    after 0 ->
-        if
-            Logging_New ->
-                [New_Data | Log_List];
-            true ->
-                Log_List
-        end
-    end.
 
 stabilize_frequency(T_End, Tk) ->
     T2 = erlang:system_time()/1.0e6,

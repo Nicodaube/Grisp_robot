@@ -15,7 +15,7 @@ init(_Args) ->
     {ok, #{seq => 2}, #{
         name => gyroscope,
         iter => infinity,
-        timeout => 5
+        timeout => 1
     }}.
     
 measure(State) ->
