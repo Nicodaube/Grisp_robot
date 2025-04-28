@@ -84,6 +84,7 @@ get_data(Name) ->
         {error, pos}
     end.
 
+%Il faut intégrer l'angle des sensor dans le calcul (à check)
 compute_angle(X, Y, Ox, Oy, Dist, Odist) ->
     DistSens = get_distance_sensors(X, Y, Ox, Oy),
     Numerator = math:pow(Dist, 2) + math:pow(DistSens, 2) - math:pow(Odist, 2),

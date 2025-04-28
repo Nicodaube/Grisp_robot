@@ -31,19 +31,26 @@ init(_Args) ->
     
 measure(State) ->
     SensorName = persistent_term:get(sensor_name),
+    Osensor = persistent_term:get(osensor)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %% Pour le hera data il faudra avoir dans les données aussi accélération, vitesse angulaire en X,y,Z
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     case hera_data:get(robot_pos, SensorName) of
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
-            DataSonars = hera_data:get(sonar),
-            %DataNav = hera_data:get(nav) ## Faudrait du coup avoir les différentes données de navigation
+            %Partie SONAR
+            {_, _, _, [TrueDist1]} = hera_data:get(distance, SensorName),
+            {_, _, _, [TrueDist2]} = hera_data:get(distance,Osensor)
+            {_, _, _, [X1, Y1, _, A1]} = hera_data:get(pos, SensorName),
+            {_, _, _, [X2, Y2, _, A2]} = hera_data:get(pos, Osensor),
+            
+            
+            %Partie avec navigation
+            DataNav = hera_data:get(nav) ## Faudrait du coup avoir les différentes données de navigation
 
             %It is use to create a secure temporel windows
             Nav = [Data || {_,_,Ts,Data} <- DataNav, T0 < Ts, T1-Ts < 500],
-            Sonars = [{Node,Data} || {Node,_,Ts,Data} <- DataSonars,
-                T0 < Ts, T1-Ts < 500],
-            {XS,YS,ZS} = xyzS(Sonars), %Données sonar en 3D
+            
+            {XS,YS,ZS} = xyzS(TrueDist1, TrueDist2, X1, Y1, X2, Y2), %Données sonar en 3D
             if
                 length(Sonars) + length(Nav) == 0 -> % no measure
                     {undefined, {T0, Xpos, Ppos, Xor, Por, R0}};
@@ -70,8 +77,7 @@ measure(State) ->
                     
                     % Obersvation matrix
                     Hpos =  [[1,0,0,0,0,0,0,0,0] || _ <- XS] ++ 
-                            [[0,0,0,1,0,0,0,0,0] || _ <- YS] ++
-                            [[0,0,0,0,0,0,1,0,0] || _ <- ZS] ++ 
+                            [[0,0,0,1,0,0,0,0,0] || _ <- YS] ++ 
                             [[0,0,1,0,0,0,0,0,0] || _ <- AccLin] ++
                             [[0,0,0,0,0,1,0,0,0] || _ <- AccLin] ++
                             [[0,0,0,0,0,0,0,0,1] || _ <- AccLin],
@@ -79,7 +85,6 @@ measure(State) ->
                     % Z = H . X + noise, mesure vector matrix
                     Zpos =  [[X] || X <- XS] ++
                             [[Y] || Y <- YS] ++
-                            [[Z] || Z <- ZS] ++
                             [[Ax] || [Ax,_,_] <- AccLin] ++
                             [[Ay] || [_,Ay,_] <- AccLin] ++
                             [[Az] || [_,_,Az] <- AccLin],
@@ -87,7 +92,8 @@ measure(State) ->
                     % noise measure matrix, weight of the different measures
                     % The lower the value, the more confidence the Kalman has in the measurement.
                     Rpos = mat:diag(
-                            [?VAR_S || _ <- Sonars] ++
+                            [?VAR_S || _ <- XS] ++
+                            [?VAR_S || _ <- YS] ++
                             [?VAR_AZ || _ <- AccLin] ++
                             [?VAR_AZ || _ <- AccLin] ++
                             [?VAR_AZ || _ <- AccLin]
@@ -170,11 +176,31 @@ send_robot_pos(Pos) ->
 %% Internal functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-xyzS(Sonars) ->
-    X = [Pos + R*Dir || {sensor_fusion@sonar_1,[R,Pos,Dir]} <- Sonars],
-    Y = [Pos + R*Dir || {sensor_fusion@sonar_2,[R,Pos,Dir]} <- Sonars],
-    Z = [Pos + R*Dir || {sensor_fusion@sonar_3,[R,Pos,Dir]} <- Sonars],
-    {X,Y,Z}.
+xyzS(TrueDist1, TrueDist2, X1, Y1, X2, Y2) ->
+    Dx = X2 - X1,
+    Dy = Y2 - Y1,
+    Dist = math:sqrt(Dx*Dx + Dy*Dy),
+    case Dist of
+        0 -> {[], [], []};
+        _ ->
+            A = (TrueDist1*TrueDist1 - TrueDist2*TrueDist2 + Dist*Dist) / (2 * Dist),
+            Px = X1 + (A * Dx) / Dist,
+            Py = Y1 + (A * Dy) / Dist,
+            {[Px], [Py], []}
+    end.
+
+triangulate({X1, Y1, D1}, {X2, Y2, D2}) ->
+    Dx = X2 - X1,
+    Dy = Y2 - Y1,
+    Dist = math:sqrt(Dx*Dx + Dy*Dy),
+    case Dist of
+        0 -> {undefined, undefined};
+        _ ->
+            A = (D1*D1 - D2*D2 + Dist*Dist) / (2 * Dist),
+            Px = X1 + (A * Dx) / Dist,
+            Py = Y1 + (A * Dy) / Dist,
+            {Px, Py}
+    end.
 
 qdot([[Q11], [Q12], [Q13], [Q14]], [[Q21], [Q22], [Q23], [Q24]]) ->
     Q11*Q21 + Q12*Q22 + Q13*Q23 + Q14*Q24.
