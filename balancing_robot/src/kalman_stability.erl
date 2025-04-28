@@ -21,7 +21,7 @@ init(_Args) ->
     hera_data:store(frequency, node(), 1, [0, 0, 200.0, T0]),
     hera_data:store(delta_time, node(), 1, [0.0]),
     hera_data:store(k_stability_state, node(), 1, [T0, X0, P0]),    
-    [{_, _, _, [Gy0, _, _]}] = hera_data:get(gyroscope),
+    [{_, _, _, [_, Gy0, _]}] = hera_data:get(gyroscope),
     persistent_term:put(gy0, Gy0),
     %hera_data:store(comp_filter_state, node(), 1, [Gy0, 0.0, 0.0]),
     
