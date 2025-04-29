@@ -46,6 +46,7 @@ config() ->
 
     persistent_term:put(hera_gyro, Gyro_Pid),
     persistent_term:put(hera_kal, Kal_Pid),
+    persistent_term:put(robot_main, self()),
     timer:sleep(1000),
     robot_init(),
     ok.
@@ -80,51 +81,55 @@ robot_init() ->
 robot_main(State) ->
     {Adv_V_Ref, Turn_V_Ref} = maps:get(movement_controls, State),
     {Robot_state, Robot_Up} = maps:get(robot_state, State),
-    {Logging, Log_End, Log_List} = maps:get(logging_state, State),
-
-    {Speed, Arm_Ready, _, _, Get_Up, Adv_V_Goal, Turn_V_Goal} = i2C_data(),
+    {Logging, Log_End, Log_List} = maps:get(logging_state, State),    
 
     % Select between kalman and comp filter
-    [{_, _, _, [Tk, Xk, _]}] = hera_data:get(k_stability_state),
-    %[{_, _, _, [_, Angle_Complem, _]}] = hera_data:get(comp_filter_state),
-    [Th_Kalman, _W_Kalman] = mat:to_array(Xk),
-    Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
-    Angle = Angle_Kalman,
+    %[{_, _, _, [Tk, Xk, _]}] = hera_data:get(k_stability_state),
 
-    Pid_Speed = persistent_term:get(pid_speed),
-    Pid_Stability = persistent_term:get(pid_stability),
-    [{_, _, _, [Dt]}] = hera_data:get(delta_time),
+    receive
+        {kalman_value, [_, Xk, _, Dt]} ->
+                {Speed, Arm_Ready, _, _, Get_Up, Adv_V_Goal, Turn_V_Goal} = i2C_data(),
+                %[{_, _, _, [_, Angle_Complem, _]}] = hera_data:get(comp_filter_state),
+                [Th_Kalman, _W_Kalman] = mat:to_array(Xk),
+                Angle_Kalman = Th_Kalman * ?RAD_TO_DEG,
+                Angle = Angle_Kalman,
 
-    {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller(
-        {Dt, Angle, Speed}, 
-        {Pid_Speed, Pid_Stability}, 
-        {Adv_V_Goal, Adv_V_Ref}, 
-        {Turn_V_Goal, Turn_V_Ref}
-    ),
+                Pid_Speed = persistent_term:get(pid_speed),
+                Pid_Stability = persistent_term:get(pid_stability),
+                %[{_, _, _, [Dt]}] = hera_data:get(delta_time),
 
-    Robot_is_Up = is_robot_standing(Angle, Robot_Up),
-    
-    New_robot_state = get_robot_state({Robot_state, Robot_Up, Get_Up, Arm_Ready, Angle}),
+                {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller(
+                    {Dt, Angle, Speed}, 
+                    {Pid_Speed, Pid_Stability}, 
+                    {Adv_V_Goal, Adv_V_Ref}, 
+                    {Turn_V_Goal, Turn_V_Ref}
+                ),
 
-    Move_direction = get_movement_direction(Angle),    
-    Output_state = get_output_state(New_robot_state, Move_direction),
-    Output_Byte = get_byte(Output_state),
+                Robot_is_Up = is_robot_standing(Angle, Robot_Up),
+                
+                New_robot_state = get_robot_state({Robot_state, Robot_Up, Get_Up, Arm_Ready, Angle}),
+
+                Move_direction = get_movement_direction(Angle),    
+                Output_state = get_output_state(New_robot_state, Move_direction),
+                Output_Byte = get_byte(Output_state),
 
 
-    [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
-    I2Cbus = persistent_term:get(i2c),
-    grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
+                [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
+                I2Cbus = persistent_term:get(i2c),
+                grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
 
-    {_, T_End} = update_frequency(Dt),
+                %{_, T_End} = update_frequency(Dt),
 
-    stabilize_frequency(T_End, Tk),
+                %stabilize_frequency(T_End, Tk),
 
-    New_State = State#{
-        robot_state => {New_robot_state, Robot_is_Up},
-        logging_state => {Logging, Log_End, Log_List},
-        movement_controls => {Adv_V_Ref_New, Turn_V_Ref_New}},
-   
-    robot_main(New_State).
+                New_State = State#{
+                    robot_state => {New_robot_state, Robot_is_Up},
+                    logging_state => {Logging, Log_End, Log_List},
+                    movement_controls => {Adv_V_Ref_New, Turn_V_Ref_New}},
+            
+                robot_main(New_State)
+    end.
+
 
 %============================================================================================================================================
 %========================================================= HELPER FUNCTION ==================================================================

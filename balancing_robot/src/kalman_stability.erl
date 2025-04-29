@@ -38,6 +38,7 @@ measure(State) ->
     % The Kalman filter uses the current sensor data (accelerometer and gyroscope)
     % and the previous state (X0, P0) to compute the new state (X1, P1).
     Gyk = persistent_term:get(gy0),
+    Robot = persistent_term:get(robot_main),
 
     [{_, Seq, _, [Tk, Xk, Pk]}] = hera_data:get(k_stability_state),
     [{_, _, _, [Gyk_1, Axk_1, Azk_1]}] = hera_data:get(gyroscope),
@@ -54,12 +55,13 @@ measure(State) ->
     %{Angle_Complem_New, Angle_Rate_New} = helper_module:complem_angle({Dt, Axk_1, Azk_1, Gyk_1, Gyk, K, Angle_Complem, Angle_Rate}),
     %Seq = maps:get(seq, State),
 
-    hera_data:store(delta_time, node(), Seq+1, [Dt]),
+    %hera_data:store(delta_time, node(), Seq+1, [Dt]),
     hera_data:store(k_stability_state, node(), Seq+1, [Tk_1, X1, P1]),
     %hera_data:store(comp_filter_state, node(), Seq, [Gyk, Angle_Complem_New, Angle_Rate_New]),
 
-    NewState = State#{seq => Seq +1},
-    {ok, [{Tk_1, X1, P1}], kalman, self(), NewState}.
+    %NewState = State#{seq => Seq +1},
+    Robot ! {kalman_value, [Tk_1, X1, P1, Dt]},
+    {ok, [{Tk_1, X1, P1}], kalman, self(), State}.
 
 
 %============================================================================================================================================
@@ -100,28 +102,31 @@ init_kalman_matrices() ->
 kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
     [R, Q, H, Jh] = persistent_term:get(kalman_matrices),
 
-    % State transition function
-    F = fun (X) -> 
-        [Th, W] = mat:to_array(X),
-        mat:matrix([ 	[Th + Dt * W],  % Update angle based on angular velocity
-                        [W          ]  % Angular velocity remains constant
-                    ])
-    end,
+    % Prediction Step
+    [Th0, W0] = mat:to_array(X0),
 
-    % Jacobian of the state transition function
-    Jf = fun (X) -> 
-        [_Th, _W] = mat:to_array(X),
-        mat:matrix([  	[1, Dt],  % Partial derivatives of the state transition function
-                        [0, 1 ]  % with respect to the state variables
-                    ])
-        end,
+    Xp = mat:matrix([
+        [Th0 + Dt * W0],
+        [W0]
+    ]),
 
+    Phi = mat:matrix([
+        [1, Dt],
+        [0, 1]
+    ]),
+
+    Pp = mat:eval([
+        Phi, '*', P0, '*´', Phi, '+', Q
+    ]),
 
     % Measurement vector
-    Z = mat:matrix([[math:atan(Az / (-Ax))],  % Angle from accelerometer
-                    [(Gy - Gy0) * ?DEG_TO_RAD]]),  % Angular velocity from gyroscope
+    Z = mat:matrix([
+        [math:atan(Az / (-Ax))],
+        [(Gy - Gy0) * ?DEG_TO_RAD]
+    ]),
 
-    % Perform the Extended Kalman Filter update
-    kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z).
+    % Kalman update
+    kalman:ekf({Xp, Pp}, {fun(X) -> X end, fun(_X) -> Phi end}, {H, Jh}, Q, R, Z).
+    
 
             
