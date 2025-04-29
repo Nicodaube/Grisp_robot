@@ -37,11 +37,10 @@ robot_init(Hera_pid) ->
     ets:insert(variables, {"Freq_Goal", 300.0}),
 
     %Calibration
-    io:format("[Robot] Calibrating... Do not move the pmod_nav!~n"),
-    grisp_led:color(1, {1, 0, 0}),
-    grisp_led:color(2, {1, 0, 0}),
-    [_Gx0,Gy0,_Gz0] = calibrate(),
-    io:format("[Robot] Done calibrating~n"),
+    io:format("[ROBOT] Calibrating... Do not move the pmod_nav!~n"),
+    [grisp_led:flash(L, green, 500) || L <- [1, 2]],
+    [_, Gy0, _] = calibrate(),
+    io:format("[ROBOT] Done calibrating~n"),
 
     %Kalman matrices
     X0 = mat:matrix([[0], [0]]),
@@ -53,9 +52,9 @@ robot_init(Hera_pid) ->
     %PIDs initialisation
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-    io:format("[Robot] Pid of the speed controller: ~p.~n", [Pid_Speed]),
-    io:format("[Robot] Pid of the stability controller: ~p.~n", [Pid_Stability]),
-	io:format("[Robot] Starting movement of the robot.~n"),
+    io:format("[ROBOT] Pid of the speed controller: ~p.~n", [Pid_Speed]),
+    io:format("[ROBOT] Pid of the stability controller: ~p.~n", [Pid_Stability]),
+	io:format("[ROBOT] Starting movement of the robot.~n"),
 
     %Call main loop
     robot_main(T0, Hera_pid, {rest, false}, {T0, X0, P0}, I2Cbus, {0, T0, []}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
