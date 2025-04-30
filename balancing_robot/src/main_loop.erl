@@ -1,6 +1,6 @@
 -module(main_loop).
 
--export([robot_init/1]).
+-export([robot_init/0]).
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(DEG_TO_RAD, math:pi()/180.0).
@@ -15,22 +15,18 @@
 %% Robot 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-robot_init(Hera_pid) ->
+robot_init() ->
 
     process_flag(priority, max),
 
     %Starting timestamp
     T0 = erlang:system_time()/1.0e6,
 
-    %Table for global variables
-    ets:new(variables, [set, public, named_table]),
-    ets:insert(variables, {"Freq_Goal", 300.0}),
+    persistent_term:put(freq_goal, 300.0),
 
     %Calibration
-    io:format("[ROBOT] Calibrating... Do not move the pmod_nav!~n"),
-    [grisp_led:flash(L, green, 500) || L <- [1, 2]],
-    [_, Gy0, _] = calibrate(),
-    io:format("[ROBOT] Done calibrating~n"),
+    
+    calibrate(),    
 
     %Kalman matrices
     X0 = mat:matrix([[0], [0]]),
@@ -48,9 +44,9 @@ robot_init(Hera_pid) ->
 	io:format("[ROBOT] Starting movement of the robot.~n"),
 
     %Call main loop
-    robot_main(T0, {rest, false}, {T0, X0, P0}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
+    robot_main(T0, {rest, false}, {T0, X0, P0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
 
-robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
 
     %Delta time of loop
     T1 = erlang:system_time()/1.0e6, %[ms]
@@ -91,6 +87,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     %%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %Kalman filter computation
+    Gy0 = persistent_term:get(gy0),
     {X1, P1} = kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
 	[Th_Kalman, _W_Kalman] = mat:to_array(X1),
     Angle = Th_Kalman * ?RAD_TO_DEG,
@@ -137,7 +134,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
 
     %Imposed maximum frequency
     T2 = erlang:system_time()/1.0e6,
-    [{_,Freq_Goal}] = ets:lookup(variables, "Freq_Goal"),
+    Freq_Goal = persistent_term:get(freq_goal),
     Delay_Goal = 1.0/Freq_Goal * 1000.0,
     if
         T2-T_End < Delay_Goal ->
@@ -148,7 +145,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     T_End_New = erlang:system_time()/1.0e6,
 
     %Loop back with updated state
-    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -156,10 +153,13 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 calibrate() ->
+    io:format("[ROBOT] Calibrating... Do not move the pmod_nav!~n"),
     N = 500,
-    Data = [list_to_tuple(pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])) || _ <- lists:seq(1,N)],
-    {X, Y, Z} = lists:unzip3(Data),
-    [lists:sum(X)/N, lists:sum(Y)/N, lists:sum(Z)/N]. %[Gx0, Gy0, Gz0]
+    Y_List = [pmod_nav:read(acc, [out_y_g]) || _ <- lists:seq(1, N)],
+    Gy0 = lists:sum([Y || [Y] <- Y_List]) / N,
+    io:format("[ROBOT] Done calibrating~n"),
+    [grisp_led:flash(L, green, 500) || L <- [1, 2]],
+    persistent_term:put(gy0, Gy0).    
 
 kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
     R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),

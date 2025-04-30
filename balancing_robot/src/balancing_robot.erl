@@ -16,7 +16,7 @@ start(_Type, _Args) ->
     pmod_nav:config(acc, #{odr_g => {hz,238}}),
     numerl:init(),
     timer:sleep(2000),
-    spawn(main_loop, robot_init, [self()]),
+    spawn(main_loop, robot_init, []),
     {ok, Supervisor}.
 
 stop(_State) -> ok.
