@@ -48,6 +48,7 @@ robot_init(Hera_pid) ->
 
     %I2C bus
     I2Cbus = grisp_i2c:open(i2c1),
+    persistent_term:put(i2c, I2Cbus),
 
     %PIDs initialisation
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
@@ -57,9 +58,9 @@ robot_init(Hera_pid) ->
 	io:format("[ROBOT] Starting movement of the robot.~n"),
 
     %Call main loop
-    robot_main(T0, Hera_pid, {rest, false}, {T0, X0, P0}, I2Cbus, {0, T0, []}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
+    robot_main(T0, {rest, false}, {T0, X0, P0}, {Gy0, 0.0, 0.0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
 
-robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, {Logging, Log_End, Log_List}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
 
     %Delta time of loop
     T1 = erlang:system_time()/1.0e6, %[ms]
@@ -77,6 +78,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     %%%%%%%%%%%%%%%%%%%%%%%%
 
     %Receive I2C and conversion
+    I2Cbus = persistent_term:get(i2c),
     [<<SL1,SL2,SR1,SR2,CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
 	[Speed_L,Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
     Speed = (Speed_L + Speed_R)/2,
@@ -247,67 +249,6 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     %Frequency computation
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
 
-    %Logging 
-    if 
-        Test ->
-            Log_End_New = erlang:system_time()/1.0e6 + ?LOG_DURATION;
-        true -> 
-            Log_End_New = Log_End
-    end,
-    Logging_New = erlang:system_time()/1.0e6 < Log_End_New,
-
-    %LED flickering while logging
-    if 
-        Logging_New -> 
-            if 
-                N rem 9 < 4 -> 
-                    grisp_led:color(1, {1, 1, 0}),
-                    grisp_led:color(2, {1, 1, 0});
-                true->
-                    grisp_led:color(1, {0, 0, 0}),
-                    grisp_led:color(2, {0, 0, 0})
-            end;
-        true ->
-            ok
-    end,
-
-    %Check for start or end of logging sequence
-    if
-        not Logging and Logging_New ->
-            Hera_pid ! {self(), start_log};
-        Logging and not Logging_New ->
-            grisp_led:color(1, {1, 1, 0}),
-            grisp_led:color(2, {1, 1, 0}),
-            Hera_pid ! {self(), stop_log};
-        true ->
-            ok
-    end,
-
-    %Send values to ESP32 if asked, else stack up values in list
-    receive
-        {From, log_values} ->  
-            From ! {self(), log, Log_List},
-            Log_List_New = []
-    after 0 ->
-        if
-            Logging_New ->
-                % Log_List_New = lists:append(Log_List, [[T1-Start_Time, 1/Dt, Gy, Acc, CtrlByte, Angle_Accelerometer, Angle_Kalman, Angle_Complem, Adv_V_Ref, Switch]]);
-                Log_List_New = [[T1-Start_Time, 1/Dt, Gy, Acc, CtrlByte, -Angle_Accelerometer, -Angle_Kalman, -Angle_Complem, Adv_V_Ref, Switch, Adv_V_Ref_New, Turn_V_Ref_New, Speed] | Log_List];
-            true ->
-                Log_List_New = Log_List
-        end
-    end,
-
-    %Communication with Hera (more messages can be implemented by the user)
-    receive
-        {From1, get_all_data} -> From1 ! {self(), data, [T1-Start_Time, 1/Dt, Gy, Acc, CtrlByte, -Angle_Accelerometer, -Angle_Kalman, -Angle_Complem, Adv_V_Ref, Switch, Adv_V_Ref_New, Turn_V_Ref_New, Speed]};
-        {From1, freq} -> From1 ! {self(), 1/Dt};
-        {From2, acc} -> From2 ! {self(), Acc};
-        {_, Msg} -> io:format("[Robot] Message [~p] not recognized. ~nPossible querries are: [get_all_data, freq, acc]. ~nMore querries can be added.", [Msg])
-    after 0 ->
-        ok
-    end,
-
 
     %Imposed maximum frequency
     T2 = erlang:system_time()/1.0e6,
@@ -322,7 +263,7 @@ robot_main(Start_Time, Hera_pid, {Robot_State, Robot_Up}, {T0, X0, P0}, I2Cbus, 
     T_End_New = erlang:system_time()/1.0e6,
 
     %Loop back with updated state
-    robot_main(Start_Time, Hera_pid, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, I2Cbus, {Logging_New, Log_End_New, Log_List_New}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
