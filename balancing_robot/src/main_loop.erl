@@ -49,16 +49,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     T1 = erlang:system_time()/1.0e6, %[ms]
 	Dt = (T1- T0)/1000.0,            %[s]
 
-    %%%%%%%%%%%%%%%%%%%%%%%%%
-    %%% Input from Sensor %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%
-
-    %Read data
-    [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
-
-    %%%%%%%%%%%%%%%%%%%%%%%%
-    %%% Input from ESP32 %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%
+    [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}), % Read Pmod Nav
 
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
@@ -69,50 +60,25 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     %Retrieve flags from ESP32
     [Arm_Ready, _, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
 
-    %%%%%%%%%%%%%%%%%%%%%
-    %%% Command Logic %%%
-    %%%%%%%%%%%%%%%%%%%%%
-
     %Set advance speed from flags
     Adv_V_Goal = speed_ref(Forward, Backward),
 
     %Set turning speed from flags
     Turn_V_Goal = turn_ref(Left, Right),
 
-    %%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%% Angle Computations %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%
-
     %Kalman filter computation
     [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, X0, P0),
 
-    %%%%%%%%%%%%%%%%%%
-    %%% Controller %%%
-    %%%%%%%%%%%%%%%%%%
-
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
-
-    %%%%%%%%%%%%%%%%%%%%%%%
-    %%% Output to ESP32 %%%
-    %%%%%%%%%%%%%%%%%%%%%%%
     
     %State of the robot
-
     Robot_Up_New = is_robot_up(Angle, Robot_Up),
-
-    Movement_direction = get_movement_direction(Angle),    
-
     Next_Robot_State = get_robot_state({Robot_State, Robot_Up, Get_Up, Arm_Ready, Angle}),
-    Output_Bits = get_output_state(Next_Robot_State, Movement_direction),
+    Output_Byte = get_output_state(Next_Robot_State, Angle),    
 
-    %Send output to ESP32
-    Output_Byte = get_byte(Output_Bits),
+    %Send output to ESP32    
     [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
-
-    %%%%%%%%%%%%%%%%%%%%%%%%
-    %%% Testing Features %%%
-    %%%%%%%%%%%%%%%%%%%%%%%%
 
     %Frequency computation
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
@@ -129,7 +95,6 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     end,
     T_End_New = erlang:system_time()/1.0e6,
 
-    %Loop back with updated state
     robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
@@ -252,25 +217,26 @@ get_robot_state(Robot_State) -> % {Robot_state, Robot_Up, Get_Up, Arm_ready, Ang
         {soft_fall, _, _, _, _} -> soft_fall
     end.
 
-get_output_state(State, Move_direction) ->
+get_output_state(State, Angle) ->
+    Move_direction = get_movement_direction(Angle),    
     % Output bits = [Power, Freeze, Extend, Robot_Up_Bit, Move_direction, 0, 0, 0]
     case State of 
         rest -> 
-            [0, 0, 0, 0, Move_direction, 0, 0, 0];
+            get_byte([0, 0, 0, 0, Move_direction, 0, 0, 0]);
         raising -> 
-            [1, 0, 1, 0, Move_direction, 0, 0, 0];
+            get_byte([1, 0, 1, 0, Move_direction, 0, 0, 0]);
         stand_up -> 
-            [1, 0, 0, 1, Move_direction, 0, 0, 0];
+            get_byte([1, 0, 0, 1, Move_direction, 0, 0, 0]);
         wait_for_extend -> 
-            [1, 0, 1, 1, Move_direction, 0, 0, 0];
+            get_byte([1, 0, 1, 1, Move_direction, 0, 0, 0]);
         prepare_arms -> 
-            [1, 0, 1, 1, Move_direction, 0, 0, 0];
+            get_byte([1, 0, 1, 1, Move_direction, 0, 0, 0]);
         free_fall -> 
-            [1, 1, 1, 1, Move_direction, 0, 0, 0];
+            get_byte([1, 1, 1, 1, Move_direction, 0, 0, 0]);
         wait_for_retract -> 
-            [1, 0, 0, 0, Move_direction, 0, 0, 0];
+            get_byte([1, 0, 0, 0, Move_direction, 0, 0, 0]);
         soft_fall -> 
-            [1, 0, 0, 0, Move_direction, 0, 0, 0]
+            get_byte([1, 0, 0, 0, Move_direction, 0, 0, 0])
     end.
 
 is_robot_up(Angle, Robot_Up) ->
