@@ -25,7 +25,6 @@ robot_init() ->
     persistent_term:put(freq_goal, 300.0),
 
     %Calibration
-    
     calibrate(),    
 
     %Kalman matrices
@@ -39,9 +38,7 @@ robot_init() ->
     %PIDs initialisation
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-    io:format("[ROBOT] Pid of the speed controller: ~p.~n", [Pid_Speed]),
-    io:format("[ROBOT] Pid of the stability controller: ~p.~n", [Pid_Stability]),
-	io:format("[ROBOT] Starting movement of the robot.~n"),
+	io:format("[ROBOT] Robot ready.~n"),
 
     %Call main loop
     robot_main(T0, {rest, false}, {T0, X0, P0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
@@ -87,25 +84,13 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     %%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %Kalman filter computation
-    Gy0 = persistent_term:get(gy0),
-    {X1, P1} = kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
-	[Th_Kalman, _W_Kalman] = mat:to_array(X1),
-    Angle = Th_Kalman * ?RAD_TO_DEG,
-
+    [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, X0, P0),
 
     %%%%%%%%%%%%%%%%%%
     %%% Controller %%%
     %%%%%%%%%%%%%%%%%%
 
-    %Takes as input:
-    % -Measures
-    % -Process IDs of the two PID controllers
-    % -Advance and turning velocity to reach and loopback velocity of trapezoidal profile
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
-    %Gives as output:
-    % -Acceleration of the motors -> sent to ESP32 
-    % -Loopback V_Ref for advance
-    % -Loopback V_Ref for turning -> sent to ESP32 
 
     %%%%%%%%%%%%%%%%%%%%%%%
     %%% Output to ESP32 %%%
@@ -161,7 +146,8 @@ calibrate() ->
     [grisp_led:flash(L, green, 500) || L <- [1, 2]],
     persistent_term:put(gy0, Gy0).    
 
-kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
+kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
+    Gy0 = persistent_term:get(gy0),
     R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),
     Q = mat:matrix([[3.0e-5, 0.0], [0.0, 10.0]]),
     F = fun (X) -> [Th, W] = mat:to_array(X),
@@ -181,7 +167,10 @@ kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
 								[0, 1] ])
 		 end,
     Z = mat:matrix([[math:atan(Az / (-Ax))], [(Gy-Gy0)*?DEG_TO_RAD]]),
-    kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z).
+    {X1, P1} = kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z),
+    [Th_Kalman, _W_Kalman] = mat:to_array(X1),
+    Angle = Th_Kalman * ?RAD_TO_DEG,
+    [Angle, {X1, P1}].
 
 speed_ref(Forward, Backward) ->
     if
