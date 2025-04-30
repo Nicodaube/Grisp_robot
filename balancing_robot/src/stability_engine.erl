@@ -1,6 +1,6 @@
 -module(stability_engine).
 
--export([controller/4]).
+-export([controller/3]).
 
 -define(ADV_V_MAX, 30.0).
 -define(ADV_ACCEL, 75.0).
@@ -10,7 +10,8 @@
 
 
 %V_ref_new must be looped to V_ref
-controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}) ->
+controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}) ->
+    {Pid_Speed, Pid_Stability} = persistent_term:get(controllers),
 
     %Saturate advance acceleration
     if   

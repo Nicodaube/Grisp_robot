@@ -39,13 +39,15 @@ robot_init() ->
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
 
+    persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
+
     init_kalman_constant(),
 	io:format("[ROBOT] Robot ready.~n"),
 
     %Call main loop
-    robot_main(T0, {rest, false}, {T0, X0, P0}, {Pid_Speed, Pid_Stability}, {0.0, 0.0}, {0, 0, 200.0, T0}).
+    robot_main(T0, {rest, false}, {T0, X0, P0}, {0.0, 0.0}, {0, 0, 200.0, T0}).
 
-robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
 
     %Delta time of loop
     T1 = erlang:system_time()/1.0e6, %[ms]
@@ -71,7 +73,8 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     %Kalman filter computation
     [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, X0, P0),
 
-    {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Pid_Speed, Pid_Stability}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
+
+    {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
     
     %State of the robot
     Robot_Up_New = is_robot_up(Angle, Robot_Up),
@@ -97,7 +100,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Pid_Speed, Pid_St
     end,
     T_End_New = erlang:system_time()/1.0e6,
 
-    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -166,7 +169,6 @@ turn_ref(Left, Right) ->
     end,
     Turn_V_Goal.
 
-
 frequency_computation(Dt, N, Freq, Mean_Freq) ->
     if 
         N == 100 ->
@@ -192,7 +194,6 @@ wait_help(_, Tend) ->
 get_byte(List) ->
     [A, B, C, D, E, F, G, H] = List,
     A*128 + B*64 + C*32 + D*16 + E*8 + F*4 + G*2 + H. 
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Global variables
