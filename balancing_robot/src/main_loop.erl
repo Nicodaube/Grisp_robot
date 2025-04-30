@@ -1,6 +1,6 @@
 -module(main_loop).
 
--export([robot_init/1, modify_frequency/1]).
+-export([robot_init/1]).
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(DEG_TO_RAD, math:pi()/180.0).
@@ -11,15 +11,8 @@
 %Turning constant
 -define(TURN_V_MAX, 80.0).
 
-%Angle at which robot is considered "down"
--define(MAX_ANGLE, 25.0).
-
 %Coefficient for the complementary filter
 -define(COEF_FILTER, 0.667).
-
-%Duration of a logging sequence
--define(LOG_DURATION, 15000).
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Robot 
@@ -84,7 +77,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     Speed = (Speed_L + Speed_R)/2,
 
     %Retrieve flags from ESP32
-    [Arm_Ready, Switch, Test, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
+    [Arm_Ready, Switch, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
 
     %%%%%%%%%%%%%%%%%%%%%
     %%% Command Logic %%%
@@ -99,9 +92,6 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     %%%%%%%%%%%%%%%%%%%%%%%%%%
     %%% Angle Computations %%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    %Angle based directly on the sensors
-    Angle_Accelerometer = math:atan(Az / (-Ax))*?RAD_TO_DEG,
 
     %Kalman filter computation
     {X1, P1} = kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
@@ -135,23 +125,13 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     %%%%%%%%%%%%%%%%%%%%%%%
     
     %State of the robot
-    if 
-        Robot_Up and (abs(Angle) > 20) ->
-            Robot_Up_New = false;
-        not Robot_Up and (abs(Angle) < 18) -> 
-            Robot_Up_New = true;
-        true ->
-            Robot_Up_New = Robot_Up
-    end,
-    if
-        Angle > 0.0 ->
-            F_B = 1;
-        true ->
-            F_B = 0
-    end,
+
+    Robot_Up_New = is_robot_up(Angle, Robot_Up),
+
+    Movement_direction = get_movement_direction(Angle),    
 
     Next_Robot_State = get_robot_state({Robot_State, Robot_Up, Get_Up, Arm_Ready, Angle}),
-    Output_Bits = get_output_state(Next_Robot_State, F_B),
+    Output_Bits = get_output_state(Next_Robot_State, Movement_direction),
 
     %Send output to ESP32
     Output_Byte = get_byte(Output_Bits),
@@ -292,10 +272,6 @@ get_byte(List) ->
 %% Global variables
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-modify_frequency(Freq) ->
-    ets:insert(variables, {"Freq_Goal", Freq}),
-    ok.
-
 get_robot_state(Robot_State) -> % {Robot_state, Robot_Up, Get_Up, Arm_ready, Angle}
     case Robot_State of
         {rest, _, true, _, _} -> raising;
@@ -341,4 +317,22 @@ get_output_state(State, Move_direction) ->
             [1, 0, 0, 0, Move_direction, 0, 0, 0];
         soft_fall -> 
             [1, 0, 0, 0, Move_direction, 0, 0, 0]
+    end.
+
+is_robot_up(Angle, Robot_Up) ->
+    if 
+        Robot_Up and (abs(Angle) > 20) ->
+            false;
+        not Robot_Up and (abs(Angle) < 18) -> 
+            true;
+        true ->
+            Robot_Up
+    end.
+
+get_movement_direction(Angle) ->
+    if
+        Angle > 0.0 ->
+            1;
+        true ->
+            0
     end.
