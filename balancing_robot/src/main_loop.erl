@@ -11,9 +11,6 @@
 %Turning constant
 -define(TURN_V_MAX, 80.0).
 
-%Coefficient for the complementary filter
--define(COEF_FILTER, 0.667).
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Robot 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -77,7 +74,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     Speed = (Speed_L + Speed_R)/2,
 
     %Retrieve flags from ESP32
-    [Arm_Ready, Switch, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
+    [Arm_Ready, _, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
 
     %%%%%%%%%%%%%%%%%%%%%
     %%% Command Logic %%%
@@ -96,14 +93,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     %Kalman filter computation
     {X1, P1} = kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0),
 	[Th_Kalman, _W_Kalman] = mat:to_array(X1),
-    Angle_Kalman = Th_Kalman*?RAD_TO_DEG,
-
-    %Complementary angle computation
-    K = 1.25/(1.25+(1.0/Mean_Freq)),
-    {Angle_Complem_New, Angle_Rate_New} = complem_angle({Dt, Ax, Az, Gy, Gy0, K, Angle_Complem, Angle_Rate}),
-
-    %Select angle between kalman or complementary
-    Angle = select_angle(Switch, Angle_Kalman, Angle_Complem),
+    Angle = Th_Kalman * ?RAD_TO_DEG,
 
 
     %%%%%%%%%%%%%%%%%%
@@ -145,7 +135,6 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     %Frequency computation
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
 
-
     %Imposed maximum frequency
     T2 = erlang:system_time()/1.0e6,
     [{_,Freq_Goal}] = ets:lookup(variables, "Freq_Goal"),
@@ -159,7 +148,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
     T_End_New = erlang:system_time()/1.0e6,
 
     %Loop back with updated state
-    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Gy0, Angle_Complem_New, Angle_Rate_New}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Gy0, Angle_Complem, Angle_Rate}, {Pid_Speed, Pid_Stability}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -193,30 +182,6 @@ kalman_angle(Dt, Ax, Az, Gy, Gy0, X0, P0) ->
 		 end,
     Z = mat:matrix([[math:atan(Az / (-Ax))], [(Gy-Gy0)*?DEG_TO_RAD]]),
     kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z).
-
-complem_angle({Dt, Ax, Az, Gy, Gy0, K, Angle_Complem, Angle_Rate}) ->
-
-    Angle_Rate_New = (Gy - Gy0) * ?COEF_FILTER + Angle_Rate * (1 - ?COEF_FILTER),
-
-    %Angle increment computed from gyroscope
-    Delta_Gyr = Angle_Rate_New * Dt,
-
-    %Absolute angle computed form accelerometer
-    Angle_Acc = math:atan(Az / (-Ax)) * 180 / math:pi(),
-
-    %Complementary filter combining gyroscope and accelerometer
-    Angle_Complem_New = (Angle_Complem + Delta_Gyr) * K + Angle_Acc * (1 - K), 
-    
-    {Angle_Complem_New, Angle_Rate_New}.
-
-select_angle(Switch, Angle_Kalman, Angle_Complem) ->
-    if
-        Switch -> 
-            Angle = Angle_Kalman;
-        true ->
-            Angle = Angle_Complem
-    end,
-    Angle.
 
 speed_ref(Forward, Backward) ->
     if

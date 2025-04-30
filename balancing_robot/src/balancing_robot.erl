@@ -15,7 +15,7 @@ start(_Type, _Args) ->
 	_ = grisp:add_device(spi2, pmod_nav),
     pmod_nav:config(acc, #{odr_g => {hz,238}}),
     numerl:init(),
-    timer:sleep(5000),
+    timer:sleep(2000),
     spawn(main_loop, robot_init, [self()]),
     {ok, Supervisor}.
 
