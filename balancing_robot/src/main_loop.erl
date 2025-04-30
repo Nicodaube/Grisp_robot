@@ -41,14 +41,26 @@ robot_init() ->
     
 	io:format("[ROBOT] Robot ready.~n"),
 
-    %Call main loop
-    robot_main(T0, {rest, false}, {T0, X0, P0}, {0.0, 0.0}, {0, 0, 200.0, T0}).
+    State = #{
+        robot_state => {rest, false}, %{Robot_State, Robot_Up}
+        kalman_state => {T0, X0, P0}, %{Tk, Xk, Pk}
+        move_speed => {0.0, 0.0}, % {Adv_V_Ref, Turn_V_Ref}
+        frequency => {0, 0, 200.0, T0} %{N, Freq, Mean_Freq, T_End}
+    }, 
 
-robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V_Ref}, {N, Freq, Mean_Freq, T_End}) ->
+    %Call main loop
+    robot_main(State).
+
+robot_main(State) ->
+    
+    {Robot_State, Robot_Up} = maps:get(robot_state, State),
+    {Tk, Xk, Pk} = maps:get(kalman_state, State),
+    {Adv_V_Ref, Turn_V_Ref} = maps:get(move_speed, State),
+    {N, Freq, Mean_Freq, T_End} = maps:get(frequency, State), 
 
     %Delta time of loop
     T1 = erlang:system_time()/1.0e6, %[ms]
-	Dt = (T1- T0)/1000.0,            %[s]
+	Dt = (T1- Tk)/1000.0,            %[s]
 
     [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}), % Read Pmod Nav
 
@@ -64,7 +76,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V
     Turn_V_Goal = turn_ref(Left, Right),
 
     %Kalman filter computation
-    [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, X0, P0),
+    [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, Xk, Pk),
 
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
     
@@ -91,7 +103,14 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V
     end,
     T_End_New = erlang:system_time()/1.0e6,
 
-    robot_main(Start_Time, {Next_Robot_State, Robot_Up_New}, {T1, X1, P1}, {Adv_V_Ref_New, Turn_V_Ref_New}, {N_New, Freq_New, Mean_Freq_New, T_End_New}).
+    NewState = State#{
+        robot_state => {Next_Robot_State, Robot_Up_New},
+        kalman_state => {T1, X1, P1},
+        move_speed => {Adv_V_Ref_New, Turn_V_Ref_New},
+        frequency => {N_New, Freq_New, Mean_Freq_New, T_End_New}
+    },
+
+    robot_main(NewState).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
