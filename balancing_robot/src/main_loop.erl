@@ -48,47 +48,46 @@ robot_init() ->
         frequency => {0, 0, 200.0, T0} %{N, Freq, Mean_Freq, T_End}
     }, 
 
-    %Call main loop
-    robot_main(State).
+    robot_loop(State).
 
-robot_main(State) ->
-    
+robot_loop(State) ->
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PARSE STATE MAP %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
     {Robot_State, Robot_Up} = maps:get(robot_state, State),
     {Tk, Xk, Pk} = maps:get(kalman_state, State),
     {Adv_V_Ref, Turn_V_Ref} = maps:get(move_speed, State),
     {N, Freq, Mean_Freq, T_End} = maps:get(frequency, State), 
 
-    %Delta time of loop
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% COMPUTE Dt BETWEEN ITERATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     T1 = erlang:system_time()/1.0e6, %[ms]
 	Dt = (T1- Tk)/1000.0,            %[s]
 
-    [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}), % Read Pmod Nav
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% GET NEW PMOD_NAV MEASURE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% GET INPUT FROM I2CBus %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     {Speed, CtrlByte} = i2c_read(),
-
-    %Retrieve flags from ESP32
     [Arm_Ready, _, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
 
-    %Set advance speed from flags
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DERIVE CONTROLS FROM INPUTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     Adv_V_Goal = speed_ref(Forward, Backward),
-
-    %Set turning speed from flags
     Turn_V_Goal = turn_ref(Left, Right),
 
-    %Kalman filter computation
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% KALMAN COMPUTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, Xk, Pk),
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SET NEW ENGINES COMMANDS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
     
-    %State of the robot
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DETERMINE NEW ROBOT STATE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     Robot_Up_New = is_robot_up(Angle, Robot_Up),
     Next_Robot_State = get_robot_state({Robot_State, Robot_Up, Get_Up, Arm_Ready, Angle}),
     Output_Byte = get_output_state(Next_Robot_State, Angle),    
 
-    %Send output to ESP32    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SEND CONTROLS TO I2CBus %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     i2c_write(Acc, Turn_V_Ref_New, Output_Byte),
 
-    %Frequency computation
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FREQUENCY STABILISATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
 
     %Imposed maximum frequency
@@ -97,7 +96,7 @@ robot_main(State) ->
     Delay_Goal = 1.0/Freq_Goal * 1000.0,
     if
         T2-T_End < Delay_Goal ->
-            wait(Delay_Goal-(T2-T1));
+            timer:sleep(Delay_Goal-(T2-T1));
         true ->
             ok
     end,
@@ -110,7 +109,7 @@ robot_main(State) ->
         frequency => {N_New, Freq_New, Mean_Freq_New, T_End_New}
     },
 
-    robot_main(NewState).
+    robot_loop(NewState).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -197,14 +196,6 @@ frequency_computation(Dt, N, Freq, Mean_Freq) ->
             Mean_Freq_New = Mean_Freq
     end,
     {N_New, Freq_New, Mean_Freq_New}.
-
-wait(T) -> 
-	Tnow = erlang:system_time()/1.0e6,
-	wait_help(Tnow,Tnow+T).
-wait_help(Tnow, Tend) when Tnow >= Tend -> ok;
-wait_help(_, Tend) -> 
-    Tnow = erlang:system_time()/1.0e6,
-    wait_help(Tnow,Tend).
 
 %Transforms a list of 8 bits into a byte
 get_byte(List) ->
