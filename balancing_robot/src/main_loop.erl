@@ -5,29 +5,19 @@
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(DEG_TO_RAD, math:pi()/180.0).
 
-%Advance constant
 -define(ADV_V_MAX, 30.0).
-
-%Turning constant
 -define(TURN_V_MAX, 80.0).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Robot 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% INITIALISATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 robot_init() ->
 
     process_flag(priority, max),
 
-    %Starting timestamp
-    T0 = erlang:system_time()/1.0e6,
+    calibrate(),
 
-    persistent_term:put(freq_goal, 300.0),
-
-    %Calibration
-    calibrate(),    
-
-    %Kalman matrices
     {X0, P0} = init_kalman(),
 
     %I2C bus
@@ -38,6 +28,9 @@ robot_init() ->
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
     persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
+    persistent_term:put(freq_goal, 300.0),
+
+    T0 = erlang:system_time()/1.0e6,
     
 	io:format("[ROBOT] Robot ready.~n"),
 
@@ -102,6 +95,7 @@ robot_loop(State) ->
     end,
     T_End_New = erlang:system_time()/1.0e6,
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STATE UPDATE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     NewState = State#{
         robot_state => {Next_Robot_State, Robot_Up_New},
         kalman_state => {T1, X1, P1},
@@ -112,9 +106,9 @@ robot_loop(State) ->
     robot_loop(NewState).
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Internal functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CONFIG FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 calibrate() ->
     io:format("[ROBOT] Calibrating... Do not move the pmod_nav!~n"),
@@ -139,6 +133,10 @@ init_kalman() ->
     P0 = mat:matrix([[0.1, 0], [0, 0.1]]),
     {X0, P0}.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% KALMAN COMPUTATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
     Gy0 = persistent_term:get(gy0),
     {R, Q, Jh} = persistent_term:get(kalman_constant),
@@ -162,49 +160,9 @@ kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
     Angle = Th_Kalman * ?RAD_TO_DEG,
     [Angle, {X1, P1}].
 
-speed_ref(Forward, Backward) ->
-    if
-        Forward ->
-            Adv_V_Goal = ?ADV_V_MAX;
-        Backward ->
-            Adv_V_Goal = - ?ADV_V_MAX;
-        true ->
-            Adv_V_Goal = 0.0
-    end,
-    Adv_V_Goal.
-
-turn_ref(Left, Right) ->
-    if
-        Right ->
-            Turn_V_Goal = ?TURN_V_MAX;
-        Left ->
-            Turn_V_Goal = - ?TURN_V_MAX;
-        true ->
-            Turn_V_Goal = 0.0
-    end,
-    Turn_V_Goal.
-
-frequency_computation(Dt, N, Freq, Mean_Freq) ->
-    if 
-        N == 100 ->
-            N_New = 0,
-            Freq_New = 0,
-            Mean_Freq_New = Freq;
-        true ->
-            N_New = N+1,
-            Freq_New = ((Freq*N)+(1/Dt))/(N+1),
-            Mean_Freq_New = Mean_Freq
-    end,
-    {N_New, Freq_New, Mean_Freq_New}.
-
-%Transforms a list of 8 bits into a byte
-get_byte(List) ->
-    [A, B, C, D, E, F, G, H] = List,
-    A*128 + B*64 + C*32 + D*16 + E*8 + F*4 + G*2 + H. 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Global variables
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ROBOT STATE LOGIC %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 get_robot_state(Robot_State) -> % {Robot_state, Robot_Up, Get_Up, Arm_ready, Angle}
     case Robot_State of
@@ -272,6 +230,14 @@ get_movement_direction(Angle) ->
             0
     end.
 
+get_byte(List) ->
+    [A, B, C, D, E, F, G, H] = List,
+    A*128 + B*64 + C*32 + D*16 + E*8 + F*4 + G*2 + H. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% I2C COMMUNICATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 i2c_read() ->
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
@@ -284,3 +250,43 @@ i2c_write(Acc, Turn_V_Ref_New, Output_Byte) ->
     I2Cbus = persistent_term:get(i2c),
     [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MISCELLANIOUS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+speed_ref(Forward, Backward) ->
+    if
+        Forward ->
+            Adv_V_Goal = ?ADV_V_MAX;
+        Backward ->
+            Adv_V_Goal = - ?ADV_V_MAX;
+        true ->
+            Adv_V_Goal = 0.0
+    end,
+    Adv_V_Goal.
+
+turn_ref(Left, Right) ->
+    if
+        Right ->
+            Turn_V_Goal = ?TURN_V_MAX;
+        Left ->
+            Turn_V_Goal = - ?TURN_V_MAX;
+        true ->
+            Turn_V_Goal = 0.0
+    end,
+    Turn_V_Goal.
+
+frequency_computation(Dt, N, Freq, Mean_Freq) ->
+    if 
+        N == 100 ->
+            N_New = 0,
+            Freq_New = 0,
+            Mean_Freq_New = Freq;
+        true ->
+            N_New = N+1,
+            Freq_New = ((Freq*N)+(1/Dt))/(N+1),
+            Mean_Freq_New = Mean_Freq
+    end,
+    {N_New, Freq_New, Mean_Freq_New}.
+    
