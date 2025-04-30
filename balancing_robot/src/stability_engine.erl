@@ -8,8 +8,6 @@
 -define(TURN_V_MAX, 80.0).
 -define(TURN_ACCEL, 400.0).
 
-
-%V_ref_new must be looped to V_ref
 controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}) ->
     {Pid_Speed, Pid_Stability} = persistent_term:get(controllers),
 
@@ -29,7 +27,6 @@ controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref
                     Adv_V_Ref_New = 0.0
             end
     end,
-    % Adv_V_Ref_New = Adv_V_Goal,
 
     %Saturate turning acceleration
     if   
@@ -47,16 +44,11 @@ controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref
                     Turn_V_Ref_New = 0.0
             end
     end,
-    % Turn_V_Ref_New = Turn_V_Goal,
 
     %Speed PI
     Pid_Speed ! {self(), {set_point, Adv_V_Ref_New}},
     Pid_Speed ! {self(), {input, Speed}},
     receive {_, {control, Target_angle}} -> ok end,
-
-    %TODO: send Target_angle to log
-
-    % io:format("~p~n",[Target_angle]),
 
     %Stability PD
     Pid_Stability ! {self(), {set_point, Target_angle}},
