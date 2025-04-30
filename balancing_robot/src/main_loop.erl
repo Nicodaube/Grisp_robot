@@ -52,8 +52,8 @@ robot_loop(State) ->
     {N, Freq, Mean_Freq, T_End} = maps:get(frequency, State), 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% COMPUTE Dt BETWEEN ITERATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    T1 = erlang:system_time()/1.0e6, %[ms]
-	Dt = (T1- Tk)/1000.0,            %[s]
+    T1 = erlang:system_time()/1.0e6,
+	Dt = (T1- Tk)/1000.0,
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% GET NEW PMOD_NAV MEASURE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}),
@@ -82,20 +82,10 @@ robot_loop(State) ->
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FREQUENCY STABILISATION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
-
-    %Imposed maximum frequency
-    T2 = erlang:system_time()/1.0e6,
-    Freq_Goal = persistent_term:get(freq_goal),
-    Delay_Goal = 1.0/Freq_Goal * 1000.0,
-    if
-        T2-T_End < Delay_Goal ->
-            timer:sleep(Delay_Goal-(T2-T1));
-        true ->
-            ok
-    end,
-    T_End_New = erlang:system_time()/1.0e6,
+    smooth_frequency(T_End, T1),
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% STATE UPDATE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    T_End_New = erlang:system_time()/1.0e6,
     NewState = State#{
         robot_state => {Next_Robot_State, Robot_Up_New},
         kalman_state => {T1, X1, P1},
@@ -104,7 +94,6 @@ robot_loop(State) ->
     },
 
     robot_loop(NewState).
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CONFIG FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -290,3 +279,13 @@ frequency_computation(Dt, N, Freq, Mean_Freq) ->
     end,
     {N_New, Freq_New, Mean_Freq_New}.
     
+smooth_frequency(T_End, T1)->
+    T2 = erlang:system_time()/1.0e6,
+    Freq_Goal = persistent_term:get(freq_goal),
+    Delay_Goal = 1.0/Freq_Goal * 1000.0,
+    if
+        T2-T_End < Delay_Goal ->
+            timer:sleep(Delay_Goal-(T2-T1));
+        true ->
+            ok
+    end.
