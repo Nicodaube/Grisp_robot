@@ -38,6 +38,8 @@ robot_init() ->
     %PIDs initialisation
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
+
+    init_kalman_constant(),
 	io:format("[ROBOT] Robot ready.~n"),
 
     %Call main loop
@@ -111,28 +113,33 @@ calibrate() ->
     [grisp_led:flash(L, green, 500) || L <- [1, 2]],
     persistent_term:put(gy0, Gy0).    
 
-kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
-    Gy0 = persistent_term:get(gy0),
+init_kalman_constant() ->
     R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),
     Q = mat:matrix([[3.0e-5, 0.0], [0.0, 10.0]]),
+    Jh = fun (_) -> mat:matrix([  	[1, 0],
+								    [0, 1] ])
+		 end,
+    persistent_term:put(kalman_constant, {R, Q, Jh}).
+
+kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
+    Gy0 = persistent_term:get(gy0),
+    {R, Q, Jh} = persistent_term:get(kalman_constant),
+    
     F = fun (X) -> [Th, W] = mat:to_array(X),
 				mat:matrix([ 	[Th+Dt*W],
 								[W      ] ])
 		end,
-    Jf = fun (X) -> [_Th, _W] = mat:to_array(X),
-				mat:matrix([  	[1, Dt],
-								[0, 1 ] ])
+    Jf = fun (_) -> mat:matrix([  	[1, Dt],
+								    [0, 1 ] ])
 		 end,
     H = fun (X) -> [Th, W] = mat:to_array(X),
 				mat:matrix([ 	[Th],
 								[W ] ])
 		end,
-    Jh = fun (X) -> [_Th, _W] = mat:to_array(X),
-				mat:matrix([  	[1, 0],
-								[0, 1] ])
-		 end,
+    
     Z = mat:matrix([[math:atan(Az / (-Ax))], [(Gy-Gy0)*?DEG_TO_RAD]]),
     {X1, P1} = kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z),
+
     [Th_Kalman, _W_Kalman] = mat:to_array(X1),
     Angle = Th_Kalman * ?RAD_TO_DEG,
     [Angle, {X1, P1}].
