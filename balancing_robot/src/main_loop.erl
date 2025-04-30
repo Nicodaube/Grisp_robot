@@ -150,95 +150,11 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Gy0, Angle_Comple
             F_B = 0
     end,
 
-    %State change
-    case Robot_State of
-        rest -> 
-            if
-                Get_Up -> Next_Robot_State = raising;
-                true -> Next_Robot_State = rest
-            end;
-        raising -> 
-            if
-                Robot_Up -> Next_Robot_State = stand_up;
-                not Get_Up -> Next_Robot_State = soft_fall;
-                true -> Next_Robot_State = raising
-            end;
-        stand_up -> 
-            if
-                not Get_Up -> Next_Robot_State = wait_for_extend;
-                not Robot_Up -> Next_Robot_State = rest;
-                true -> Next_Robot_State = stand_up
-            end;
-        wait_for_extend -> %Buffer state while Next_Robot_State switches state
-            Next_Robot_State = prepare_arms;
-        prepare_arms -> 
-            if
-                Arm_Ready -> Next_Robot_State = free_fall;
-                Get_Up -> Next_Robot_State = stand_up;
-                not Robot_Up -> Next_Robot_State = rest;
-                true -> Next_Robot_State = prepare_arms
-            end;
-        free_fall -> 
-            if
-                abs(Angle) > 10 -> Next_Robot_State = wait_for_retract;
-                true -> Next_Robot_State = free_fall
-            end;
-        wait_for_retract -> %Buffer state while Next_Robot_State switches state
-            Next_Robot_State = soft_fall;
-        soft_fall -> 
-            if
-                Arm_Ready -> Next_Robot_State = rest;
-                Get_Up -> Next_Robot_State = raising;
-                true -> Next_Robot_State = soft_fall
-            end
-    end,
-
-    %State output
-    case Next_Robot_State of
-        rest -> 
-            Power    = 0,
-            Freeze   = 0,
-            Extend   = 0,
-            Robot_Up_Bit = 0;
-        raising -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 1,
-            Robot_Up_Bit = 0;
-        stand_up -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 0,
-            Robot_Up_Bit = 1;
-        wait_for_extend -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 1,
-            Robot_Up_Bit = 1;
-        prepare_arms -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 1,
-            Robot_Up_Bit = 1;
-        free_fall -> 
-            Power    = 1,
-            Freeze   = 1,
-            Extend   = 1,
-            Robot_Up_Bit = 1;
-        wait_for_retract -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 0,
-            Robot_Up_Bit = 0;
-        soft_fall -> 
-            Power    = 1,
-            Freeze   = 0,
-            Extend   = 0,
-            Robot_Up_Bit = 0
-    end,
+    Next_Robot_State = get_robot_state({Robot_State, Robot_Up, Get_Up, Arm_Ready, Angle}),
+    Output_Bits = get_output_state(Next_Robot_State, F_B),
 
     %Send output to ESP32
-    Output_Byte = get_byte([Power, Freeze, Extend, Robot_Up_Bit, F_B, 0, 0, 0]),
+    Output_Byte = get_byte(Output_Bits),
     [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
     grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
 
@@ -379,3 +295,50 @@ get_byte(List) ->
 modify_frequency(Freq) ->
     ets:insert(variables, {"Freq_Goal", Freq}),
     ok.
+
+get_robot_state(Robot_State) -> % {Robot_state, Robot_Up, Get_Up, Arm_ready, Angle}
+    case Robot_State of
+        {rest, _, true, _, _} -> raising;
+        {rest, _, _, _, _} -> rest;
+        {raising, true, _, _, _} -> stand_up;
+        {raising, _, false, _, _} -> soft_fall;
+        {raising, _, _, _, _} -> raising;
+        {stand_up, _, false, _, _} -> wait_for_extend;
+        {stand_up, false, _, _, _} -> rest;
+        {stand_up, _, _, _, _} -> stand_up;
+        {wait_for_extend, _, _, _, _} -> prepare_arms;
+        {prepare_arms, _, _, true, _} -> free_fall;
+        {prepare_arms, _, true, _, _} -> stand_up;
+        {prepare_arms, false, _, _, _} -> rest;
+        {prepare_arms, _, _, _, _} -> prepare_arms;
+        {free_fall, _, _, _, Angle} ->
+            case abs(Angle) >10 of
+                true -> wait_for_retract;
+                _ ->free_fall
+            end;
+        {wait_for_retract, _, _, _, _} -> soft_fall;
+        {soft_fall, _, _, true, _} -> rest;
+        {soft_fall, _, true, _, _} -> raising;
+        {soft_fall, _, _, _, _} -> soft_fall
+    end.
+
+get_output_state(State, Move_direction) ->
+    % Output bits = [Power, Freeze, Extend, Robot_Up_Bit, Move_direction, 0, 0, 0]
+    case State of 
+        rest -> 
+            [0, 0, 0, 0, Move_direction, 0, 0, 0];
+        raising -> 
+            [1, 0, 1, 0, Move_direction, 0, 0, 0];
+        stand_up -> 
+            [1, 0, 0, 1, Move_direction, 0, 0, 0];
+        wait_for_extend -> 
+            [1, 0, 1, 1, Move_direction, 0, 0, 0];
+        prepare_arms -> 
+            [1, 0, 1, 1, Move_direction, 0, 0, 0];
+        free_fall -> 
+            [1, 1, 1, 1, Move_direction, 0, 0, 0];
+        wait_for_retract -> 
+            [1, 0, 0, 0, Move_direction, 0, 0, 0];
+        soft_fall -> 
+            [1, 0, 0, 0, Move_direction, 0, 0, 0]
+    end.
