@@ -28,8 +28,7 @@ robot_init() ->
     calibrate(),    
 
     %Kalman matrices
-    X0 = mat:matrix([[0], [0]]),
-    P0 = mat:matrix([[0.1, 0], [0, 0.1]]),
+    {X0, P0} = init_kalman(),
 
     %I2C bus
     I2Cbus = grisp_i2c:open(i2c1),
@@ -38,10 +37,8 @@ robot_init() ->
     %PIDs initialisation
     Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
     Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-
     persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
-
-    init_kalman_constant(),
+    
 	io:format("[ROBOT] Robot ready.~n"),
 
     %Call main loop
@@ -55,11 +52,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V
 
     [Gy,Ax,Az] = pmod_nav:read(acc, [out_y_g, out_x_xl, out_z_xl], #{g_unit => dps}), % Read Pmod Nav
 
-    %Receive I2C and conversion
-    I2Cbus = persistent_term:get(i2c),
-    [<<SL1,SL2,SR1,SR2,CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
-	[Speed_L,Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
-    Speed = (Speed_L + Speed_R)/2,
+    {Speed, CtrlByte} = i2c_read(),
 
     %Retrieve flags from ESP32
     [Arm_Ready, _, _, Get_Up, Forward, Backward, Left, Right] = hera_com:get_bits(CtrlByte),
@@ -73,7 +66,6 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V
     %Kalman filter computation
     [Angle, {X1, P1}] = kalman_angle(Dt, Ax, Az, Gy, X0, P0),
 
-
     {Acc, Adv_V_Ref_New, Turn_V_Ref_New} = stability_engine:controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref}),
     
     %State of the robot
@@ -82,8 +74,7 @@ robot_main(Start_Time, {Robot_State, Robot_Up}, {T0, X0, P0}, {Adv_V_Ref, Turn_V
     Output_Byte = get_output_state(Next_Robot_State, Angle),    
 
     %Send output to ESP32    
-    [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
-    grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]),
+    i2c_write(Acc, Turn_V_Ref_New, Output_Byte),
 
     %Frequency computation
     {N_New, Freq_New, Mean_Freq_New} = frequency_computation(Dt, N, Freq, Mean_Freq),
@@ -116,13 +107,19 @@ calibrate() ->
     [grisp_led:flash(L, green, 500) || L <- [1, 2]],
     persistent_term:put(gy0, Gy0).    
 
-init_kalman_constant() ->
+init_kalman() ->
+    % Initiating kalman constants
     R = mat:matrix([[3.0, 0.0], [0, 3.0e-6]]),
     Q = mat:matrix([[3.0e-5, 0.0], [0.0, 10.0]]),
     Jh = fun (_) -> mat:matrix([  	[1, 0],
 								    [0, 1] ])
 		 end,
-    persistent_term:put(kalman_constant, {R, Q, Jh}).
+    persistent_term:put(kalman_constant, {R, Q, Jh}),
+
+    % Initial State and Covariance matrices
+    X0 = mat:matrix([[0], [0]]),
+    P0 = mat:matrix([[0.1, 0], [0, 0.1]]),
+    {X0, P0}.
 
 kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
     Gy0 = persistent_term:get(gy0),
@@ -264,3 +261,16 @@ get_movement_direction(Angle) ->
         true ->
             0
     end.
+
+i2c_read() ->
+    %Receive I2C and conversion
+    I2Cbus = persistent_term:get(i2c),
+    [<<SL1,SL2,SR1,SR2,CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
+    [Speed_L,Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
+    Speed = (Speed_L + Speed_R)/2,
+    {Speed, CtrlByte}.
+
+i2c_write(Acc, Turn_V_Ref_New, Output_Byte) ->
+    I2Cbus = persistent_term:get(i2c),
+    [HF1, HF2] = hera_com:encode_half_float([Acc, Turn_V_Ref_New]),
+    grisp_i2c:transfer(I2Cbus, [{write, 16#40, 1, [HF1, HF2, <<Output_Byte>>]}]).
