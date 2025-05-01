@@ -14,7 +14,7 @@
 start(_Type, _Args) -> 
     io:format("[SENSOR] start initialization sequence~n"),
     {ok, _} = sensor_sup:start_link(),
-    hera_sub:subscribe(self()),
+    hera_subscribe:subscribe(self()),
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
