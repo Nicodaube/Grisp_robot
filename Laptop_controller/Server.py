@@ -34,12 +34,19 @@ class Server:
                 data, addr = server_socket.recvfrom(1024)
                 try :
                     data = data.decode()
+                    
 
                     if data[:5] == "Hello":
-                        id = int(data[11:])
-                        self.sensors[id] = Sensor(addr[0], addr[1], id)
-                        print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
-                        self.send("Ack , server", "uni", id)
+                        id = data[11:]
+                        if id == "robot":
+                            print("[SERVER] Received hello from Robot")
+                            self.robot.update_adress(addr[0], addr[1])
+                            self.send("Ack, server", "uni", "robot")
+                        else : 
+                            id = int(id)
+                            self.sensors[id] = Sensor(addr[0], addr[1], id)
+                            print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
+                            self.send("Ack , server", "uni", id)
                     elif data[:8] == "Distance":
                         self.sensors[addr[0]].update_data(float(data[9:]))
                 except : 
@@ -63,11 +70,17 @@ class Server:
 
     def uni_server(self, message, id):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
-            sensor = self.sensors.get(id)
-            ip = sensor.ip
-            port = sensor.port
-            srv_socket.sendto(message.encode(), (ip, port))
-            print("[SERVER] Sent to " + str(sensor.id) + " on (" + str(ip) + ", " + str(port) + ") : " + str(message))
+            if id == "robot":
+                ip = self.robot.ip
+                port = self.robot.port      
+                srv_socket.sendto(message.encode(), (ip, port))   
+                print("[SERVER] Sent to Robot on (" + str(ip) + ", " + str(port) + ") : " + str(message))       
+            else : 
+                sensor = self.sensors.get(id)
+                ip = sensor.ip
+                port = sensor.port
+                srv_socket.sendto(message.encode(), (ip, port))
+                print("[SERVER] Sent to " + str(sensor.id) + " on (" + str(ip) + ", " + str(port) + ") : " + str(message))
 
     def get_sensors(self):
         return self.sensors.keys()
