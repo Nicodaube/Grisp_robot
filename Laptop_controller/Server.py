@@ -38,7 +38,6 @@ class Server:
 
                     if data[:5] == "Hello":
                         id = data[11:]
-                        print(id)
                         if id == "robot":
                             print("[SERVER] Received hello from Robot")
                             self.robot.update_adress(addr[0], addr[1])

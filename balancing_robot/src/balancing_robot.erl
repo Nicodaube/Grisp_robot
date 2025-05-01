@@ -19,6 +19,7 @@ start(_Type, _Args) ->
     spawn(main_loop, robot_init, []),
     hera_subscribe:subscribe(self()),
     config(),
+    loop(),
     {ok, Supervisor}.
 
 stop(_State) -> ok.
@@ -80,3 +81,121 @@ send_udp_message(Name, Message, Type) ->
     % @param Message : message to be sent (String/Tuple)
     % @param Type : type of message, can be UTF8 or Binary (String)
     hera_com:send_unicast(Name, Message, Type).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOOP %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+loop() ->
+    receive 
+        {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors 
+            add_device(Name, SIp, Port);          
+        {hera_notify, ["Init_pos", SPosx, SPosy, SAngle, SRoom]} -> % Register Robot Device initial position
+            store_robot_position(SPosx, SPosy, SAngle, SRoom);            
+        {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
+            store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS);
+        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
+            start_measures();
+        {hera_notify, ["Exit"]} ->
+            reset_state();
+        {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
+            loop();
+        {hera_notify, Msg} -> % Unhandled Message
+            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            loop();
+        Msg -> % Message not from hera_notify
+            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
+            loop()
+    end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOOP FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+add_device(Name, SIp, SPort) ->
+    % Adds a device to the list of known devices
+    % @param Name : name of the device to register (String)
+    % @param SIp : IP adress (String)
+    % @param SPort : Port (String)
+    SelfName = persistent_term:get(sensor_name),
+    case list_to_atom(Name) of 
+        SelfName -> % Don't register self
+            ok;
+        OName -> 
+            io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+            {ok, Ip} = inet:parse_address(SIp),
+            Port = list_to_integer(SPort),
+            hera_com:add_device(OName, Ip, Port)
+    end,            
+    loop().
+
+store_robot_position(SPosx, SPosy, SAngle, SRoom) ->
+    % Stores the initial robot position
+    % @param SPosx : X axis position (String)
+    % @param SPosY : Y axis position (String)
+    % @param SAngle : Robot angle (String)
+    % @param SRoom : Robot room position (String)
+    Posx = list_to_float(SPosx),
+    Posy = list_to_float(SPosy),
+    Angle = list_to_integer(SAngle),
+    Room = list_to_integer(SRoom),            
+    hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room]),
+    loop().
+
+store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
+    % Store the position of a sensor
+    % @param Xs : X axis position (String)
+    % @param Ys : Y axis position (String)
+    % @param Hs : Z axis position (String)
+    % @param As : Angle of sensor (String)
+    % @param Rooms : Room number (String)
+    X = list_to_float(Xs),
+    Y = list_to_float(Ys),
+    H = list_to_float(Hs),
+    A = list_to_integer(As),
+    Room = list_to_integer(RoomS),
+    SensorName = list_to_atom("sensor_" ++ Ids),
+    hera_data:store(room, SensorName, 1, [Room]),
+    hera_data:store(pos, SensorName, 1, [X, Y, H, A]),
+    %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
+    loop().
+
+start_measures() ->
+    % Launch all the hera_measure modules to gather data
+    % @param Id : Sensor's Id set by the jumpers (Integer)            
+    {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
+    persistent_term:put(kalman_measure, Kalman_Pid),
+    [grisp_led:color(L, green) || L <- [1, 2]],
+    loop(). 
+
+reset_state() ->
+    % Kills all hera_measures modules, resets all data and jump back to server discovery
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    %exit_measure_module(sonar_sensor),
+    exit_measure_module(kalman_measure),
+
+    timer:sleep(500),
+    reset_data(),
+
+    grisp_led:flash(1, green, 1000),      
+    grisp_led:flash(2, white, 1000),      
+
+    discover_server(),            
+    io:format("[SENSOR] Waiting for start signal ...~n~n"),
+    loop().
+
+reset_data() ->
+    % Delete all config dependent and hera_measures data
+    hera_data:reset(),
+    io:format("[SENSOR] Data resetted~n~n").
+
+exit_measure_module(Name) ->
+    % Kills a module stored in persistent term
+    % @param Name : the name of the module (atom)
+    Pid = persistent_term:get(Name, none),    
+    case Pid of
+        none ->
+            ok;
+        _ -> 
+            exit(Pid, shutdown)
+    end.
