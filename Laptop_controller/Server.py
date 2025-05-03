@@ -49,6 +49,12 @@ class Server:
                             self.send("Ack , server", "uni", id)
                     elif data[:8] == "Distance":
                         self.sensors[addr[0]].update_data(float(data[9:]))
+                    elif data[:9] == "Robot_pos":
+                        data_split = data.strip().split(",")
+                        if addr[0] == self.robot.ip:
+                            self.robot.update_pos((float(data_split[1]), float(data_split[2])), int(data_split[3]), int(data_split[4]))                        
+                    else :
+                        print("[SERVER] received strange data : " + data)
                 except : 
                     pass
 
@@ -93,8 +99,8 @@ class Server:
     def update_sens_height(self, id, height):
         self.sensors.get(id).update_height(height)
 
-    def update_robot(self, pos, real_pos, angle, room):
-        self.robot.update_pos(pos, real_pos, angle, room)
+    def update_robot(self, real_pos, angle, room):
+        self.robot.update_pos(real_pos, angle, room)
         
     def send_pos(self):
         self.started = True
