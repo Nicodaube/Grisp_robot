@@ -176,8 +176,8 @@ reset_state() ->
     timer:sleep(500),
     reset_data(),
 
-    grisp_led:flash(2, green, 1000),      
-    grisp_led:flash(1, white, 1000),      
+    grisp_led:flash(2, white, 1000),      
+    grisp_led:flash(1, green, 1000),      
 
     discover_server(),            
     io:format("[SENSOR] Waiting for start signal ...~n~n"),
