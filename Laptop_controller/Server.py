@@ -39,18 +39,20 @@ class Server:
                     if data[:5] == "Hello":
                         id = data[11:]
                         if id == "robot":
-                            print("[SERVER] Received hello from Robot")
+                            print("[SERVER] Received hello from Robot on (" + addr[0] + ", " + str(addr[1]) + ")")
                             self.robot.update_adress(addr[0], addr[1])
                             self.send("Ack, server", "uni", "robot")
                         else : 
                             id = int(id)
                             self.sensors[id] = Sensor(addr[0], addr[1], id)
-                            print("[SERVER] Received hello from " + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
+                            print("[SERVER] Received hello from sensor_" + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
                             self.send("Ack , server", "uni", id)
                     elif data[:8] == "Distance":
                         self.sensors[addr[0]].update_data(float(data[9:]))
                     elif data[:9] == "Robot_pos":
                         data_split = data.strip().split(",")
+                        print("[SERVER] Received new robot position : (" + data_split[1] + "," + data_split[2] + ") on " + addr[0])
+                        print(addr[0] == self.robot.ip)
                         if addr[0] == self.robot.ip:
                             self.robot.update_pos((float(data_split[1]), float(data_split[2])), int(data_split[3]), int(data_split[4]))                        
                     else :
