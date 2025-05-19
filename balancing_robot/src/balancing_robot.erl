@@ -117,9 +117,8 @@ add_device(Name, SIp, SPort) ->
     % @param Name : name of the device to register (String)
     % @param SIp : IP adress (String)
     % @param SPort : Port (String)
-    SelfName = persistent_term:get(sensor_name),
     case list_to_atom(Name) of 
-        SelfName -> % Don't register self
+        robot -> % Don't register self
             ok;
         OName -> 
             io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
@@ -177,8 +176,8 @@ reset_state() ->
     timer:sleep(500),
     reset_data(),
 
-    grisp_led:flash(1, green, 1000),      
     grisp_led:flash(2, white, 1000),      
+    grisp_led:flash(1, green, 1000),      
 
     discover_server(),            
     io:format("[SENSOR] Waiting for start signal ...~n~n"),

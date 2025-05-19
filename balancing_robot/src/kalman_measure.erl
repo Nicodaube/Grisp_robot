@@ -17,14 +17,13 @@ init(_Args) ->
     }}.
     
 measure(State) ->
-    SensorName = persistent_term:get(sensor_name),
-    case hera_data:get(robot_pos, SensorName) of
+    case hera_data:get(robot_pos, robot) of
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
             Seq = maps:get(seq, State, 1),
             NewState = State#{seq => Seq +1},
             io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[OldX, OldY, OldAngle, OldRoom]),
             send_robot_pos([OldX, OldY, OldAngle, OldRoom]),
-            {ok, [OldX, OldY, OldAngle, OldRoom], robot_pos, SensorName, NewState};
+            {ok, [OldX, OldY, OldAngle, OldRoom], robot_pos, robot, NewState};
         _ ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
             {stop, no_robot_pos}

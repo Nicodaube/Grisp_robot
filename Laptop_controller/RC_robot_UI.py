@@ -170,7 +170,7 @@ class User_interface:
         if robot_room != None and self.robot == None:
             self.in_popup = True
             x, y = self.get_real_pos(event.pos[0], event.pos[1])
-            self.server.update_robot(event.pos, (x,y), 0, robot_room)
+            self.server.update_robot((x,y), 0, robot_room)
             self.robot = self.server.robot
             self.create_robot_popup()
         
@@ -431,7 +431,8 @@ class User_interface:
 
     def draw_robot(self):
         if self.robot != None and self.robot.confirmed:
-            self.draw_image("robot", self.robot.pos[0], self.robot.pos[1])
+            x, y = self.get_screen_pos(self.robot.real_pos[0], self.robot.real_pos[1])
+            self.draw_image("robot", x, y)
 ######################################################## POPUPS CREATORS #####################################################
     
     def create_choice_popup(self):
@@ -949,6 +950,11 @@ class User_interface:
         grid_y = round((y - self.room_grid[1][0])/(self.HEIGHT/self.RESIZE), 2)
 
         return grid_x, grid_y
+    
+    def get_screen_pos(self, grid_x, grid_y):
+        x = self.room_grid[0][0] + grid_x * (self.HEIGHT / self.RESIZE)
+        y = self.room_grid[1][0] + grid_y * (self.HEIGHT / self.RESIZE)
+        return x, y
     
     def check_trajectory(self):
         if self.is_trajectory_started:
