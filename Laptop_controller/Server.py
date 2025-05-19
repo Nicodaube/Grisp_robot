@@ -10,14 +10,15 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
-    robot = Robot()
     started = False
 
     def __init__(self):
+        self.robot = Robot()
         self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
         self.rcvServer.start()
         self.pinger = threading.Thread(target=self.ping_server, daemon=True)
         self.pinger.start()
+
 
     def ping_server(self):
         while not self.started : 
@@ -33,8 +34,7 @@ class Server:
             while True:
                 data, addr = server_socket.recvfrom(1024)
                 try :
-                    data = data.decode()
-                    
+                    data = data.decode()                    
 
                     if data[:5] == "Hello":
                         id = data[11:]
@@ -51,10 +51,8 @@ class Server:
                         self.sensors[addr[0]].update_data(float(data[9:]))
                     elif data[:9] == "Robot_pos":
                         data_split = data.strip().split(",")
-                        print("[SERVER] Received new robot position : (" + data_split[1] + "," + data_split[2] + ") on " + addr[0])
-                        print(addr[0] == self.robot.ip)
                         if addr[0] == self.robot.ip:
-                            self.robot.update_pos((float(data_split[1]), float(data_split[2])), int(data_split[3]), int(data_split[4]))                        
+                            self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))                        
                     else :
                         print("[SERVER] received strange data : " + data)
                 except : 
@@ -102,7 +100,7 @@ class Server:
         self.sensors.get(id).update_height(height)
 
     def update_robot(self, real_pos, angle, room):
-        self.robot.update_pos(real_pos, angle, room)
+        self.robot.update_pos(real_pos[0], real_pos[1], angle, room.room_num)
         
     def send_pos(self):
         self.started = True
@@ -119,7 +117,7 @@ class Server:
             message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
             self.send(message, "brd")
             time.sleep(0.5)
-            message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room.room_num)
+            message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
             self.send(message, "brd")
         time.sleep(1)
         message = "Start " + self.HOST

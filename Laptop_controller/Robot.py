@@ -12,8 +12,8 @@ class Robot:
         self.ip = ip
         self.port = port
 
-    def update_pos(self, real_pos: tuple, angle: int, room: int) -> None:
-        print("[ROBOT] is at " + str(real_pos) + " with an angle of " + str(angle) + " in room " + str(room.room_num))
-        self.real_pos = real_pos
+    def update_pos(self, x:float, y: float, angle: int, room: int) -> None:
+        print("[ROBOT] is at " + str((x, y)) + " with an angle of " + str(angle) + " in room " + str(room))
+        self.real_pos = (x, y)
         self.angle = angle
         self.room = room
