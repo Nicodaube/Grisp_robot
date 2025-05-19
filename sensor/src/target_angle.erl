@@ -18,7 +18,7 @@ init(_Args) ->
                 timeout => 300
             }};
         {stop, no_other_sensor} ->
-            io:format("[TARGET_ANGLE] No other sensor, not spawning"),
+            io:format("[TARGET_ANGLE] No other sensor, not spawning~n"),
             {stop, no_other_sensor}
     end.   
 
@@ -121,6 +121,7 @@ compute_angle(X, Y, Ox, Oy, Dist, Odist) ->
             ClampedCosAlpha = max(-1.0, min(1.0, CosAlpha)),
             AlphaRadians = math:acos(ClampedCosAlpha),
             AlphaDegrees = AlphaRadians * 180 / math:pi(),
+            io:format("[TARGET_ANGLE] Dist between sensors : ~p~nDist from current sensor : ~p~nDist from other sensor : ~p~nAngle : ~p~n", [DistSens, Dist, Odist, AlphaDegrees]),
             {ok, AlphaDegrees}
     end.
 
@@ -130,5 +131,6 @@ get_distance_sensors(X, Y, Ox, Oy) ->
     % @param Y : current sensor y axis pos (Float)
     % @param Ox : other sensor x axis pos (Float)
     % @param Oy : other sensor y axis pos (Float)
-    Result = math:sqrt(math:pow(Ox - X, 2) + math:pow(Oy - Y, 2)),
+    Result = math:sqrt(math:pow(Ox - X, 2) + math:pow(Oy - Y, 2)) *100,
+    %io:format("[TARGET_ANGLE] other sensor is at : ~p~n", [Result]),
     Result.
