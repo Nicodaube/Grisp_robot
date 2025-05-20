@@ -10,7 +10,6 @@
 %============================================================================================================================================
 
 init(_Args) ->
-    timer:sleep(300),
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     get_sensor_role(),
 
@@ -54,18 +53,20 @@ get_sensor_role() ->
     {ok, N} = get_rand_num(),
     case persistent_term:get(osensor, none) of
         none -> % Is alone in a room
+            io:format("[SONAR_SENSOR] No other sensor, sensor is master"),
             TimeClock = erlang:system_time(millisecond),
             persistent_term:put(sensor_role, {master, TimeClock});                     
         Osensor ->
             receive
                 {master, TimeClock} -> % Received when an other sensor wants to measure
                     io:format("[SONAR_SENSOR] Becoming slave sensor, measuring in negative phase~n"),
-                    Offset = get_time_offset(TimeClock),
-                    persistent_term:put(sensor_role, {slave, TimeClock, Offset})     
+                    IntTimeClock = list_to_integer(TimeClock),
+                    Offset = get_time_offset(IntTimeClock),
+                    persistent_term:put(sensor_role, {slave, IntTimeClock, Offset})     
             after N -> % No sign of other sensor
                 io:format("[SONAR_SENSOR] No message from the other sensor, becoming master sensor (positive phase)~n"),
                 TimeClock = erlang:system_time(millisecond),                
-                hera_com:send_unicast(Osensor, "master", "UTF8"),
+                hera_com:send_unicast(Osensor, "master ," ++ integer_to_list(TimeClock), "UTF8"),
                 persistent_term:put(sensor_role, {master, TimeClock})     
             end
     end.       
