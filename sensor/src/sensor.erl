@@ -125,8 +125,8 @@ loop(Id) ->
             store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             start_measures(Id);
-        {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
-            wait_before_measure(Id);
+        {hera_notify, ["master", TimeClock]} -> % Received from the other sensor in the room when it spawned first
+            set_sensor_slave(Id, TimeClock);
         {hera_notify, ["Exit"]} ->
             reset_state(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
@@ -207,7 +207,7 @@ start_measures(Id) ->
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop(Id).
 
-wait_before_measure(Id) ->
+set_sensor_slave(Id, TimeClock) ->
     % Sends a message to the sonar module to wait before measuring
     % @param Id : Sensor's Id set by the jumpers (Integer)
     Pid = persistent_term:get(sonar_sensor, none),
@@ -216,7 +216,7 @@ wait_before_measure(Id) ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
             loop(Id);
         _ ->
-            Pid ! {measure},
+            Pid ! {master, TimeClock},
             loop(Id)
     end.
 
