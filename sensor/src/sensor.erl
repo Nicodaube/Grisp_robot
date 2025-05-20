@@ -198,11 +198,19 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
 start_measures(Id) ->
     % Launch all the hera_measure modules to gather data
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    {ok, Angle_Pid} = hera:start_measure(target_angle, []),
-    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
+    case find_other_sensor() of
+        ok ->
+            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
+            persistent_term:put(target_angle, Angle_Pid),
+            persistent_term:put(sonar_sensor, Sonar_Pid);
+        _ -> 
+            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+            persistent_term:put(sonar_sensor, Sonar_Pid)
+    end,    
+           
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-    persistent_term:put(target_angle, Angle_Pid),
-    persistent_term:put(sonar_sensor, Sonar_Pid),
+    
     persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop(Id).
@@ -253,3 +261,46 @@ exit_measure_module(Name) ->
         _ -> 
             exit(Pid, shutdown)
     end.
+
+find_other_sensor() ->
+    % Sets up the affiliation with the room's sensor
+    timer:sleep(300),
+    SensName = persistent_term:get(sensor_name),
+    case hera_data:get(room, SensName) of
+      [{_, _, _, [Room]}] ->        
+        case get_Osensor(Room) of 
+            [H|_] -> % Multiple sensors in a room
+                io:format("[SENSOR] Other sensor is : ~p~n", [H]),
+                persistent_term:put(osensor, H),
+                ok;
+            _ -> % No other sensor
+                io:format("[SENSOR] No other sensor in the room~n"),
+                {error, no_other_sensor}
+        end;
+        
+      Msg ->
+        io:format("[SENSOR] Error in getting sensor pos ~p~n",[Msg]),
+        timer:sleep(500),
+        find_other_sensor()
+    end.
+
+get_Osensor(Room) ->
+    % Finds the other sensors in the current room
+    % @param Room : Room to set (Integer)
+    Devices = persistent_term:get(devices),
+    lists:foldl(
+        fun({Name, _, _}, Acc) ->
+            case Name of
+                _ ->
+                    case hera_data:get(room, Name) of
+                        [{_, _, _, [ORoom]}] when Room =:= ORoom ->
+                                %io:format("[SENSOR] Sens : ~p is in the same room as this sensor~n", [Name]),
+                                [Name | Acc];
+                        _ ->
+                            Acc
+                    end
+            end
+        end,
+        [],
+        Devices
+    ).

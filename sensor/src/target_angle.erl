@@ -9,18 +9,13 @@
 %============================================================================================================================================
 
 init(_Args) ->
+    timer:sleep(1500),
     io:format("[TARGET_ANGLE] Spawning~n"),
-    case setup() of
-        {ok, _} ->
-            {ok, #{seq => 1}, #{
-                name => angle_measure,
-                iter => infinity,
-                timeout => 300
-            }};
-        {stop, no_other_sensor} ->
-            io:format("[TARGET_ANGLE] No other sensor, not spawning~n"),
-            {stop, no_other_sensor}
-    end.   
+    {ok, #{seq => 1}, #{
+        name => angle_measure,
+        iter => infinity,
+        timeout => 300
+    }}.
 
 measure(State) ->
     Seq = maps:get(seq, State, 1),
@@ -34,53 +29,6 @@ measure(State) ->
     NewState = State#{seq => Seq + 1},
     {ok, [Angle], angle, SensorName, NewState}. 
 
-%============================================================================================================================================
-%=============================================================== CONFIG =====================================================================
-%============================================================================================================================================
-
-setup() ->
-    % Sets up the affiliation with the room's sensor
-    timer:sleep(1500),
-    SensName = persistent_term:get(sensor_name),
-    case hera_data:get(room, SensName) of
-      [{_, _, _, [Room]}] ->        
-        case find_sensors_room(Room) of 
-            [H|_] -> % Multiple sensors in a room
-                io:format("[TARGET_ANGLE] Other sensor is : ~p~n", [H]),
-                persistent_term:put(osensor, H),
-                {ok, Room};
-            _ -> % No other sensor
-                io:format("[TARGET_ANGLE] No other sensor in the room~n"),
-                {stop, no_other_sensor}
-        end;
-        
-      Msg ->
-        io:format("[TARGET_ANGLE] Error in getting sensor pos ~p~n",[Msg]),
-        timer:sleep(500),
-        setup()
-    end.
-    
-find_sensors_room(Room) ->
-    % Finds the other sensors in the current room
-    % @param Room : Room to set (Integer)
-    Devices = persistent_term:get(devices),
-    lists:foldl(
-        fun({Name, _, _}, Acc) ->
-            case Name of
-                _ ->
-                    case hera_data:get(room, Name) of
-                        [{_, _, _, [ORoom]}] when Room =:= ORoom ->
-                                %io:format("[TARGET_ANGLE] Sens : ~p is in the same room as this sensor~n", [Name]),
-                                [Name | Acc];
-                        _ ->
-                            Acc
-                    end
-            end
-        end,
-        [],
-        Devices
-    ).
-    
 %============================================================================================================================================
 %=============================================================== ANGLE COMPUTATION FUNC =====================================================
 %============================================================================================================================================
