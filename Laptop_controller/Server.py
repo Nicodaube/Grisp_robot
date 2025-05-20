@@ -72,7 +72,8 @@ class Server:
             port = 9000
 
             srv_socket.sendto(message.encode(), (broadcast_ip, port))
-            print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
+            if message[:4] != "ping":
+                print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
 
     def uni_server(self, message, id):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
@@ -113,12 +114,12 @@ class Server:
                 self.send(message, "brd")
                 time.sleep(0.5)
 
-        if self.robot.ip != "0":
+        """ if self.robot.ip != "0":
             message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
             self.send(message, "brd")
             time.sleep(0.5)
             message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
-            self.send(message, "brd")
+            self.send(message, "brd") """
         time.sleep(1)
         message = "Start " + self.HOST
         self.send(message, "brd")
