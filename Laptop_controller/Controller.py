@@ -58,7 +58,7 @@ class User_interface:
     def __init__(self, trajectory):
 
         pygame.init()
-        #self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
         
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("Robot Controller")
@@ -244,15 +244,14 @@ class User_interface:
             self.close_popup()
             self.create_room_popup()
         elif event.ui_element == self.UI_elements.get("Submit_robot_pos"):
-            Robot_x = self.UI_elements.get("Robot_x")
-            Robot_y = self.UI_elements.get("Robot_y")
-
-            try:
-                x, y = self.compute_screen_size(float(Robot_x), float(Robot_y))
-                self.server.update_robot((x,y), 0, 0) #TODO: GET ROBOT ROOM FROM X AND Y
+            Robot_x = self.UI_elements.get("Robot_x").get_text()
+            Robot_y = self.UI_elements.get("Robot_y").get_text()            
+                
+            try :
+                self.server.update_robot((float(Robot_x),float(Robot_y)), 0, self.rooms[0]) #TODO: GET ROBOT ROOM FROM X AND Y
                 self.robot = self.server.robot
                 self.robot.confirmed = True
-            except:
+            except:        
                 print("[CONTROLLER] Error with the robot placement")
             self.close_popup()
 
@@ -1018,7 +1017,7 @@ class User_interface:
         directory = Path("./saves")
         files = [f.name for f in directory.iterdir() if f.is_file()]
         return files
-    
+
 ######################################################### MAIN LOOP ############################################################
 
     def main_loop(self):
@@ -1054,7 +1053,7 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            #self.serial_comm()
+            self.serial_comm()
 
         # Quit
         pygame.quit()

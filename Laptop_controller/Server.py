@@ -69,10 +69,10 @@ class Server:
             srv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
             broadcast_ip = '172.20.10.15'
-            port = 9000
-
+            port = 9000            
             srv_socket.sendto(message.encode(), (broadcast_ip, port))
-            print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
+            if message[:4] != "ping":
+                print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
 
     def uni_server(self, message, id):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
