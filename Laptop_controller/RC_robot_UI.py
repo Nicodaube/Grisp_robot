@@ -58,7 +58,7 @@ class User_interface:
     def __init__(self, trajectory):
 
         pygame.init()
-        self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        #self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
         
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("Robot Controller")
@@ -103,6 +103,9 @@ class User_interface:
         load_img = pygame.image.load('./img/button_load.png')
         load_img = pygame.transform.scale(load_img, (load_img.get_width(), load_img.get_height()))
 
+        place_robot = pygame.image.load('./img/button_place_robot.png')
+        place_robot = pygame.transform.scale(place_robot, (place_robot.get_width(), place_robot.get_height()))
+
         zoom_in = pygame.image.load('./img/zoom_in.png')
         zoom_in = pygame.transform.scale(zoom_in, (zoom_in.get_width()//8, zoom_in.get_height()//8))
 
@@ -117,6 +120,7 @@ class User_interface:
         self.image_dict["start"] = start_img
         self.image_dict["save"] = save_img
         self.image_dict["load"] = load_img
+        self.image_dict["place_robot"] = place_robot
         self.image_dict["start_pressed"] = start_img_pressed
         self.image_dict["zoom_in"] = zoom_in
         self.image_dict["zoom_out"] = zoom_out
@@ -166,15 +170,8 @@ class User_interface:
 
             if room_rect.collidepoint(event.pos):
                 robot_room = room_obj
-
-        if robot_room != None and self.robot == None:
-            self.in_popup = True
-            x, y = self.get_real_pos(event.pos[0], event.pos[1])
-            self.server.update_robot((x,y), 0, robot_room)
-            self.robot = self.server.robot
-            self.create_robot_popup()
         
-        elif len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
+        if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
             self.temp_origin = "plus_L_0"
             self.create_room_popup()
@@ -192,6 +189,10 @@ class User_interface:
         elif self.is_click_image("load", event):
             self.in_popup = True
             self.create_load_popup()
+
+        elif self.is_click_image("place_robot", event):
+            self.in_popup = True
+            self.create_robot_popup()
 
         elif self.is_click_image("zoom_in", event):
             if(self.RESIZE != 1):            
@@ -242,12 +243,20 @@ class User_interface:
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
-        elif event.ui_element == self.UI_elements.get("yes"):
-            self.robot.confirmed = True
+        elif event.ui_element == self.UI_elements.get("Submit_robot_pos"):
+            Robot_x = self.UI_elements.get("Robot_x")
+            Robot_y = self.UI_elements.get("Robot_y")
+
+            try:
+                x, y = self.compute_screen_size(float(Robot_x), float(Robot_y))
+                self.server.update_robot((x,y), 0, 0) #TODO: GET ROBOT ROOM FROM X AND Y
+                self.robot = self.server.robot
+                self.robot.confirmed = True
+            except:
+                print("[CONTROLLER] Error with the robot placement")
             self.close_popup()
-        elif event.ui_element == self.UI_elements.get("no"):
-            self.robot = None
-            self.close_popup()
+
+
         
         #Check sensor choice 
         sensors = self.server.get_sensors()
@@ -424,6 +433,8 @@ class User_interface:
             self.draw_image("start", self.WIDTH-200, 100)
         self.draw_image("save", self.WIDTH-375, 100)
         self.draw_image("load", self.WIDTH-550, 100)
+        if len(self.rooms) > 0:
+            self.draw_image("place_robot", self.WIDTH-775, 100)
 
         # Draw zoom
         self.draw_image("zoom_in", self.WIDTH - 200, self.HEIGHT - 100)
@@ -433,6 +444,7 @@ class User_interface:
         if self.robot != None and self.robot.confirmed:
             x, y = self.get_screen_pos(self.robot.real_pos[0], self.robot.real_pos[1])
             self.draw_image("robot", x, y)
+
 ######################################################## POPUPS CREATORS #####################################################
     
     def create_choice_popup(self):
@@ -780,7 +792,7 @@ class User_interface:
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
         popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 6
+        popup_height = self.HEIGHT // 3
         margin_left = (self.WIDTH - button_width)//20
         margin = 20
 
@@ -805,22 +817,46 @@ class User_interface:
         header_label = pygame_gui.elements.UILabel(
             
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            text="Do you want to place the robot here ?",
+            text="Where do you want to place the robot ?",
             manager=self.manager,
             container=popup_window
         )
         current_y += button_height + margin
 
-        self.UI_elements["yes"] = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(margin_left, current_y, button_width//2 - margin_left, button_height),
-            text="Yes",
+        width_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Width (m):",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Robot_x"] = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        width_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="height (m):",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Robot_y"] = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
             manager=self.manager,
             container=popup_window
         )
 
-        self.UI_elements["no"] = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(2*margin_left + button_width//2, current_y, button_width//2 - margin_left, button_height),
-            text="No",
+        current_y += button_height + 2*margin
+
+        self.UI_elements["Submit_robot_pos"] = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Validate",
             manager=self.manager,
             container=popup_window
         )
@@ -1018,7 +1054,7 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            self.serial_comm()
+            #self.serial_comm()
 
         # Quit
         pygame.quit()
