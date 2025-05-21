@@ -24,7 +24,7 @@ measure(State) ->
     SensorName = persistent_term:get(sensor_name),
     Current_time = erlang:system_time(millisecond),
     case persistent_term:get(sensor_role) of
-        {master, TimeClock} ->
+        {master, TimeClock, _} ->
             Phase = get_phase(TimeClock, Current_time),
             if 
                 Phase >= 0, Phase < 50 ->
@@ -50,30 +50,51 @@ measure(State) ->
 %============================================================================================================================================
 
 get_sensor_role() ->
-    {ok, N} = get_rand_num(),
     case persistent_term:get(osensor, none) of
         none -> % Is alone in a room
-            io:format("[SONAR_SENSOR] No other sensor, sensor is master"),
+            io:format("[SONAR_SENSOR] No other sensor, sensor is master~n"),
             TimeClock = erlang:system_time(millisecond),
             persistent_term:put(sensor_role, {master, TimeClock});                     
-        Osensor ->
-            receive
-                {master, TimeClock} -> % Received when an other sensor wants to measure
-                    io:format("[SONAR_SENSOR] Becoming slave sensor, measuring in negative phase~n"),
-                    IntTimeClock = list_to_integer(TimeClock),
-                    Offset = get_time_offset(IntTimeClock),
-                    persistent_term:put(sensor_role, {slave, IntTimeClock, Offset})     
-            after N -> % No sign of other sensor
-                io:format("[SONAR_SENSOR] No message from the other sensor, becoming master sensor (positive phase)~n"),
-                TimeClock = erlang:system_time(millisecond),                
-                hera_com:send_unicast(Osensor, "master ," ++ integer_to_list(TimeClock), "UTF8"),
-                persistent_term:put(sensor_role, {master, TimeClock})     
-            end
+        Osensor -> % Start Handshake
+            {ok, Priority} = get_rand_num(),
+            TimeClock = erlang:system_time(millisecond),
+            io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
+            role_handshake(Osensor, Priority, TimeClock)
     end.       
 
-get_time_offset(TimeClock) ->
-    Current_time =  erlang:system_time(millisecond),
-    TimeClock - Current_time.
+role_handshake(Osensor, Priority, TimeClock) ->
+    hera_com:send_unicast(Osensor, "Handshake," ++ integer_to_list(Priority) ++ "," ++ integer_to_list(TimeClock), "UTF8"),
+    receive
+        {handshake, OPriority, OTimeClock} ->
+            if
+                Priority > OPriority ->
+                    io:format("[SONAR_SENSOR] Local priority higher, sensor role : MASTER~n"),
+                    persistent_term:put(sensor_role, {master, TimeClock, OTimeClock - TimeClock}),
+                    wait_ack(Osensor);
+                Priority < OPriority ->
+                    io:format("[SONAR_SENSOR] External priority higher, sensor role : SLAVE~n"),
+                    persistent_term:put(sensor_role, {slave, OTimeClock, OTimeClock - TimeClock}),
+                    wait_ack(Osensor);                   
+                true ->
+                    io:format("[SONAR_SENSOR] Priority collision, retrying~n"),
+                    {ok, New_Priority} = get_rand_num(),
+                    role_handshake(Osensor, New_Priority, TimeClock)                    
+            end;
+        {ok, role} ->
+            ok
+    after 500 ->
+        role_handshake(Osensor, Priority, TimeClock) 
+    end.   
+
+wait_ack(Osensor) ->
+    hera_com:send_unicast(Osensor, "Ok,role", "UTF8"),
+    receive
+        {ok, role} -> ok;
+        _ -> wait_ack(Osensor)
+    after 500 ->
+        wait_ack(Osensor)
+    end.
+
 
 %============================================================================================================================================
 %========================================================= SONAR MEASURE  ===================================================================
@@ -121,10 +142,11 @@ round(Number, Precision) ->
     round(Number * Power) / Power.
 
 get_rand_num() ->
-    % Returns a random number between 0 and 1000
+    % Returns a random number between 0 and 2000
+    persistent_term:get(id),
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(1000)}.   
+    {ok, rand:uniform(3000)}.   
 
 get_phase(TimeClock, Current_time) ->
     Phase = (Current_time - TimeClock) rem 100,
