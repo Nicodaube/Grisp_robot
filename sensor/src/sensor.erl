@@ -68,7 +68,7 @@ discover_server(Id) ->
             hera_com:add_device(list_to_atom(Name), Ip, IntPort),
             ack_loop(Id)
     after 9000 ->
-        io:format("[SENSOR] no ping from server~n"),
+        io:format("[SENSOR] no ping from server~n~n"),
         discover_server(Id)
     end.
 
@@ -124,10 +124,14 @@ loop(Id) ->
         {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
             store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
+            io:format("~n~n~n[SENSOR] Start received, starting the computing phase~n"),
             start_measures(Id);
-        {hera_notify, ["measure"]} -> % Received from an other sensor when it wants to measure
-            wait_before_measure(Id);
-        {hera_notify, ["Exit"]} ->
+        {hera_notify, ["Handshake", OPriority, OTimeClock]} -> % Received from the other sensor in during the sonar sensors role distribution
+            resolve_handshake(Id, OPriority, OTimeClock);
+        {hera_notify, ["Ok", _]} -> % Received from the other sensor to acknowledge the roles of the sensors 
+            end_handshake(Id);
+        {hera_notify, ["Exit"]} -> % Received when the controller is exited
+            io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop(Id);
@@ -198,25 +202,50 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
 start_measures(Id) ->
     % Launch all the hera_measure modules to gather data
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    {ok, Angle_Pid} = hera:start_measure(target_angle, []),
-    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),            
-    {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-    persistent_term:put(target_angle, Angle_Pid),
-    persistent_term:put(sonar_sensor, Sonar_Pid),
-    persistent_term:put(kalman_measure, Kalman_Pid),
+    case find_other_sensor() of
+        ok ->
+            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+            %{ok, Angle_Pid} = hera:start_measure(target_angle, []),
+            %persistent_term:put(target_angle, Angle_Pid),
+            persistent_term:put(sonar_sensor, Sonar_Pid);
+        _ -> 
+            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+            persistent_term:put(sonar_sensor, Sonar_Pid)
+    end,    
+           
+    %{ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
+    
+    %persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop(Id).
 
-wait_before_measure(Id) ->
-    % Sends a message to the sonar module to wait before measuring
+resolve_handshake(Id, OPriority, OTimeClock) ->
+    % Sends a message with the informations concerning the sensors role definition
     % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param OPriority : Other sensor's random priority (String)
+    % @param OTimeclock : Other sensor's time clock (String)
     Pid = persistent_term:get(sonar_sensor, none),
     case Pid of
         none ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
             loop(Id);
         _ ->
-            Pid ! {measure},
+            %io:format("[SENSOR] Sending handshake informations~n"),
+            Pid ! {handshake, list_to_integer(OPriority), list_to_integer(OTimeClock)},
+            loop(Id)
+    end.
+
+end_handshake(Id)->
+% Sends a ok message to signify the end of the handshake procedure
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    Pid = persistent_term:get(sonar_sensor, none),
+    case Pid of
+        none -> 
+            io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
+            loop(Id);
+        _ ->
+            %io:format("[SENSOR] Sending handshake ok~n"),
+            Pid ! {ok, role},
             loop(Id)
     end.
 
@@ -224,8 +253,8 @@ reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
     exit_measure_module(sonar_sensor),
-    exit_measure_module(target_angle),
-    exit_measure_module(kalman_measure),
+    %exit_measure_module(target_angle),
+    %exit_measure_module(kalman_measure),
 
     timer:sleep(500),
     reset_data(),
@@ -241,7 +270,8 @@ reset_data() ->
     persistent_term:erase(osensor),
     persistent_term:erase(sonar_sensor),
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n~n").
+    io:format("[SENSOR] Data resetted~n~n~n~n"),
+    io:format("=================================================================================================~n").
 
 exit_measure_module(Name) ->
     % Kills a module stored in persistent term
@@ -253,3 +283,46 @@ exit_measure_module(Name) ->
         _ -> 
             exit(Pid, shutdown)
     end.
+
+find_other_sensor() ->
+    % Sets up the affiliation with the room's sensor
+    timer:sleep(300),
+    SensName = persistent_term:get(sensor_name),
+    case hera_data:get(room, SensName) of
+      [{_, _, _, [Room]}] ->        
+        case get_Osensor(Room) of 
+            [H|_] -> % Multiple sensors in a room
+                io:format("[SENSOR] Other sensor is : ~p~n", [H]),
+                persistent_term:put(osensor, H),
+                ok;
+            _ -> % No other sensor
+                io:format("[SENSOR] No other sensor in the room~n"),
+                {error, no_other_sensor}
+        end;
+        
+      Msg ->
+        io:format("[SENSOR] Error in getting sensor pos ~p~n",[Msg]),
+        timer:sleep(500),
+        find_other_sensor()
+    end.
+
+get_Osensor(Room) ->
+    % Finds the other sensors in the current room
+    % @param Room : Room to set (Integer)
+    Devices = persistent_term:get(devices),
+    lists:foldl(
+        fun({Name, _, _}, Acc) ->
+            case Name of
+                _ ->
+                    case hera_data:get(room, Name) of
+                        [{_, _, _, [ORoom]}] when Room =:= ORoom ->
+                                %io:format("[SENSOR] Sens : ~p is in the same room as this sensor~n", [Name]),
+                                [Name | Acc];
+                        _ ->
+                            Acc
+                    end
+            end
+        end,
+        [],
+        Devices
+    ).
