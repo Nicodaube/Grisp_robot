@@ -11,9 +11,9 @@
 
 init(_Args) ->
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
-    get_sensor_role(),
+    Init_seq = get_sensor_role(),
 
-    {ok, #{seq => 1}, #{
+    {ok, #{seq => Init_seq}, #{
         name => sonar_sensor,
         iter => infinity,
         timeout => 300
@@ -54,15 +54,20 @@ get_sensor_role() ->
         none -> % Is alone in a room
             io:format("[SONAR_SENSOR] No other sensor, sensor is master~n"),
             TimeClock = erlang:system_time(millisecond),
-            persistent_term:put(sensor_role, {master, TimeClock});                     
+            persistent_term:put(sensor_role, {master, TimeClock, 0});                     
         Osensor -> % Start Handshake
             case persistent_term:get(sensor_role, none) of
-                none ->
+                none -> % Classical sensor bootstrap
                     {ok, Priority} = get_rand_num(),
                     TimeClock = erlang:system_time(millisecond),
                     %io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
-                    role_handshake(Osensor, Priority, TimeClock);
-                _ -> ok % Case where the sonar sensor crashed and was reloaded
+                    role_handshake(Osensor, Priority, TimeClock),
+                    1;
+                _ ->  % Case where the sonar sensor crashed and was reloaded (need to find the latest seq number)
+                    io:format("[SONAR_SENSOR] Recovering from crash"),
+                    [{_, _, Seq, [_]}] = hera_data:get(distance),
+                    io:format(Seq),
+                    Seq+1
             end
     end.       
 
