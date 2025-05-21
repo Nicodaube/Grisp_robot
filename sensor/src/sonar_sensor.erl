@@ -56,10 +56,14 @@ get_sensor_role() ->
             TimeClock = erlang:system_time(millisecond),
             persistent_term:put(sensor_role, {master, TimeClock});                     
         Osensor -> % Start Handshake
-            {ok, Priority} = get_rand_num(),
-            TimeClock = erlang:system_time(millisecond),
-            io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
-            role_handshake(Osensor, Priority, TimeClock)
+            case persistent_term:get(sensor_role, none) of
+                none ->
+                    {ok, Priority} = get_rand_num(),
+                    TimeClock = erlang:system_time(millisecond),
+                    %io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
+                    role_handshake(Osensor, Priority, TimeClock);
+                _ -> ok % Case where the sonar sensor crashed and was reloaded
+            end
     end.       
 
 role_handshake(Osensor, Priority, TimeClock) ->
@@ -68,13 +72,13 @@ role_handshake(Osensor, Priority, TimeClock) ->
         {handshake, OPriority, OTimeClock} ->
             if
                 Priority > OPriority ->
-                    io:format("[SONAR_SENSOR] Local priority higher, sensor role : MASTER~n"),
-                    persistent_term:put(sensor_role, {master, TimeClock, OTimeClock - TimeClock}),
-                    wait_ack(Osensor);
+                    io:format("[SONAR_SENSOR] Local priority higher, sensor role : MASTER~n"),                    
+                    wait_ack(Osensor),
+                    persistent_term:put(sensor_role, {master, TimeClock, OTimeClock - TimeClock});
                 Priority < OPriority ->
-                    io:format("[SONAR_SENSOR] External priority higher, sensor role : SLAVE~n"),
-                    persistent_term:put(sensor_role, {slave, OTimeClock, OTimeClock - TimeClock}),
-                    wait_ack(Osensor);                   
+                    io:format("[SONAR_SENSOR] External priority higher, sensor role : SLAVE~n"),                    
+                    wait_ack(Osensor),                  
+                    persistent_term:put(sensor_role, {slave, OTimeClock, OTimeClock - TimeClock});
                 true ->
                     io:format("[SONAR_SENSOR] Priority collision, retrying~n"),
                     {ok, New_Priority} = get_rand_num(),
@@ -89,12 +93,11 @@ role_handshake(Osensor, Priority, TimeClock) ->
 wait_ack(Osensor) ->
     hera_com:send_unicast(Osensor, "Ok,role", "UTF8"),
     receive
-        {ok, role} -> ok;
+        {ok, _} -> ok;
         _ -> wait_ack(Osensor)
     after 500 ->
         wait_ack(Osensor)
     end.
-
 
 %============================================================================================================================================
 %========================================================= SONAR MEASURE  ===================================================================
@@ -110,6 +113,7 @@ get_measure(State, SensorName) ->
     %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
 
     get_ground_distance(State, SensorName, D).
+
 get_ground_distance(State, SensorName, D) ->
     % Uses the basic pythagorian formula to transform the distance based on the sensor's height
     % @param State : the internal state of the module (tuple)

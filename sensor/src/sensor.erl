@@ -128,7 +128,7 @@ loop(Id) ->
             start_measures(Id);
         {hera_notify, ["Handshake", OPriority, OTimeClock]} -> % Received from the other sensor in during the sonar sensors role distribution
             resolve_handshake(Id, OPriority, OTimeClock);
-        {hera_notify, ["Ok", _]}->
+        {hera_notify, ["Ok", _]} -> % Received from the other sensor to acknowledge the roles of the sensors 
             end_handshake(Id);
         {hera_notify, ["Exit"]} -> % Received when the controller is exited
             io:format("~n[SENSOR] Exit message received~n"),
@@ -230,19 +230,21 @@ resolve_handshake(Id, OPriority, OTimeClock) ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
             loop(Id);
         _ ->
-            io:format("[SENSOR] Sending handshake informations~n"),
+            %io:format("[SENSOR] Sending handshake informations~n"),
             Pid ! {handshake, list_to_integer(OPriority), list_to_integer(OTimeClock)},
             loop(Id)
     end.
 
 end_handshake(Id)->
+% Sends a ok message to signify the end of the handshake procedure
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     Pid = persistent_term:get(sonar_sensor, none),
     case Pid of
         none -> 
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
             loop(Id);
         _ ->
-            io:format("[SENSOR] Sending handshake ok~n"),
+            %io:format("[SENSOR] Sending handshake ok~n"),
             Pid ! {ok, role},
             loop(Id)
     end.
