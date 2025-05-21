@@ -15,20 +15,24 @@ class User_interface:
     # App General State
     WIDTH, HEIGHT = 1920, 1080 # Screen Size
     RESIZE = 2 # Resizing factor for the rooms
-    running = True
-    in_popup = False
-    active_popup = None
-    UI_elements = {}
-    temp_origin = None
-    x = 0
-    string = ""
+    running = True # Kills the loop when closed
+    in_popup = False # True if a pop up is open
+    active_popup = None # Open Popup object
+    UI_elements = {} # List of the current pop up objects (Labels, buttons, Textentry)
+    temp_origin = None # Object of origin of a request 
+
+    # Commands
+    x = 0 # Movement command
+    string = "" # String to be printed on screen
+
+    # Images refs
     image_dict = {}
     rect_dict = {}
 
     # App Room state
-    room_grid = ((0,0),(0,0))
-    rooms = []
-    sensor = []
+    room_grid = ((0,0),(0,0)) # Grid composed by the rooms
+    rooms = [] # List of Room Objects
+    sensor = [] # List of Sensor Objects
 
     # Predefined trajectory
     trajectory = []
@@ -40,10 +44,10 @@ class User_interface:
     timer = 0
 
     # Robot UI
-    robot = None
+    robot = None # Robot object
 
     # Robot state
-    message = 0  #Message to send to the robot
+    message = 0  # Message to send to the robot
     run = True 
     stand = False
     kalman = True
@@ -73,6 +77,8 @@ class User_interface:
         self.load_figures()
 
     def load_figures(self):
+        # Loads all the images inside the image list
+
         arrow_img = pygame.image.load('./img/arrow.png')
         arrow_img = pygame.transform.scale(arrow_img, (arrow_img.get_width() // 4, arrow_img.get_height() // 4))
 
@@ -126,9 +132,12 @@ class User_interface:
         self.image_dict["zoom_out"] = zoom_out
         self.image_dict["robot"] = robot
 
+#########################################################################################################################
 ######################################################### TRIGGER CHECK #################################################
+#########################################################################################################################
 
     def event_handler(self):
+        # Main event handler function
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.server.send("Exit", "brd")
@@ -143,13 +152,13 @@ class User_interface:
             self.manager.process_events(event)
 
     def event_click(self, event):
+        # Click on an image
         if self.in_popup:
             return
         
-        robot_room = None
         for room in range(len(self.rooms)):
-
             for side in ["L", "R", "T", "B"]:
+                # Click on a side plus sign
                 name = "plus_" + side + "_" + str(room)
                 if self.is_click_image(name, event) :
                     self.in_popup = True
@@ -157,40 +166,42 @@ class User_interface:
                     self.create_choice_popup()
 
             for corner in ["TL", "TR", "BL", "BR"]:
+                # Click on a corner plus sign
                 name = "plus_" + corner + "_" + str(room)
                 if self.is_click_image(name, event) :
                     self.in_popup = True
                     self.temp_origin = name
                     self.create_sensor_popup()
 
-            room_obj = self.rooms[room]
-            
+            room_obj = self.rooms[room]            
             room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
             room_rect.center = room_obj.pos
-
-            if room_rect.collidepoint(event.pos):
-                robot_room = room_obj
         
         if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
+            # First plus sign when there are no room created
             self.in_popup = True
             self.temp_origin = "plus_L_0"
             self.create_room_popup()
 
         elif self.is_click_image("start", event) :
+            # Start button
             self.server.send_pos()
             time.sleep(2)
             self.is_trajectory_started = True
             self.timer = pygame.time.get_ticks()/1000
 
         elif self.is_click_image("save", event):
+            # Save a config
             self.in_popup = True
             self.create_save_popup()
 
         elif self.is_click_image("load", event):
+            # Load a config
             self.in_popup = True
             self.create_load_popup()
 
         elif self.is_click_image("place_robot", event):
+            # Place the robot in a room
             self.in_popup = True
             self.create_robot_popup()
 
@@ -207,7 +218,9 @@ class User_interface:
             self.RESIZE += 1
 
     def event_interact_popup(self, event):
+        # Interactions within a popup
         if event.ui_element == self.UI_elements.get("Room_Submit"):
+            # Creation of a room
             width = self.UI_elements.get("Width").get_text()
             height = self.UI_elements.get("Height").get_text()
             if width != "" and height != "":
@@ -224,14 +237,20 @@ class User_interface:
                     print("[ERROR] : Problem with width and height values")
             self.close_popup()
             self.temp_origin = None
+
         elif event.ui_element == self.UI_elements.get("Save_Submit"):
+            # Save a configuration
             filename = self.UI_elements.get("Filename").get_text()
             self.create_save_file(filename)
             self.close_popup()
+
         elif event.ui_element == self.UI_elements.get("Sensor"):
+            # Click on sensor from the choice popup
             self.close_popup()
             self.create_sensor_popup()
+
         elif event.ui_element == self.UI_elements.get("SensH_Submit"):
+            # Get the height of the sensor
             height = self.UI_elements.get("Sens_height").get_text()
 
             height = float(height)
@@ -241,9 +260,12 @@ class User_interface:
             self.temp_origin = None
 
         elif event.ui_element == self.UI_elements.get("Room"):
+            # Click on room from the choice popup
             self.close_popup()
             self.create_room_popup()
+
         elif event.ui_element == self.UI_elements.get("Submit_robot_pos"):
+            # Get the information from the place robot popup
             Robot_x = self.UI_elements.get("Robot_x").get_text()
             Robot_y = self.UI_elements.get("Robot_y").get_text()            
                 
@@ -254,8 +276,6 @@ class User_interface:
             except:        
                 print("[CONTROLLER] Error with the robot placement")
             self.close_popup()
-
-
         
         #Check sensor choice 
         sensors = self.server.get_sensors()
@@ -283,8 +303,9 @@ class User_interface:
                 self.close_popup()
                                             
         self.in_popup = False
-
-######################################################### KEYBOARD FUNCTIONS #################################################
+#########################################################################################################################
+######################################################### KEYBOARD FUNCTIONS ############################################
+#########################################################################################################################
 
     def check_keys_movement(self, keys):
         if keys[pygame.K_SPACE]:
@@ -338,7 +359,9 @@ class User_interface:
         else:
             self.release_enter = True
 
-######################################################### DRAWING FUNCTIONS #################################################
+#########################################################################################################################
+######################################################### DRAWING FUNCTIONS #############################################
+#########################################################################################################################
 
     def update_screen_size(self):   
         self.WIDTH, self.HEIGHT = self.screen.get_size()
@@ -444,7 +467,9 @@ class User_interface:
             x, y = self.get_screen_pos(self.robot.real_pos[0], self.robot.real_pos[1])
             self.draw_image("robot", x, y)
 
-######################################################## POPUPS CREATORS #####################################################
+#########################################################################################################################
+######################################################## POPUPS CREATORS ################################################
+#########################################################################################################################
     
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -863,7 +888,9 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
-######################################################### SERIAL COMM FUNCTIONS #################################################
+#########################################################################################################################
+######################################################### SERIAL COMM FUNCTIONS #########################################
+#########################################################################################################################
 
     def serial_comm(self):
         data = self.run << 7 | self.kalman << 6 | self.test << 5 | self.stand << 4 | (self.x.real == 1) << 3 | (self.x.real == -1) << 2 | (
@@ -885,7 +912,10 @@ class User_interface:
         else:
             self.trajectory = None
 
-############################################################ HELPER FUNCTIONS #####################################################
+#########################################################################################################################
+############################################################ HELPER FUNCTIONS ###########################################
+#########################################################################################################################
+
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
@@ -1017,8 +1047,10 @@ class User_interface:
         directory = Path("./saves")
         files = [f.name for f in directory.iterdir() if f.is_file()]
         return files
-
-######################################################### MAIN LOOP ############################################################
+    
+#########################################################################################################################
+######################################################### MAIN LOOP #####################################################
+#########################################################################################################################
 
     def main_loop(self):
         while self.running:
