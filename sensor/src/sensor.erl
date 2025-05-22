@@ -270,6 +270,7 @@ reset_data() ->
     % Delete all config dependent and hera_measures data
     persistent_term:erase(osensor),
     persistent_term:erase(sonar_sensor),
+    persistent_term:erase(sensor_role),
     hera_data:reset(),
     io:format("[SENSOR] Data resetted~n~n~n~n"),
     io:format("=================================================================================================~n").
