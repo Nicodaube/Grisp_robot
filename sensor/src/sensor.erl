@@ -123,8 +123,7 @@ loop(Id) ->
             store_robot_position(Id, SPosx, SPosy, SAngle, SRoom);            
         {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
             store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS);
-        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
-            io:format("~n~n~n[SENSOR] Start received, starting the computing phase~n"),
+        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
             start_measures(Id);
         {hera_notify, ["Handshake", OPriority, OTimeClock]} -> % Received from the other sensor in during the sonar sensors role distribution
             resolve_handshake(Id, OPriority, OTimeClock);
@@ -202,12 +201,14 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
 start_measures(Id) ->
     % Launch all the hera_measure modules to gather data
     % @param Id : Sensor's Id set by the jumpers (Integer)
+    io:format("=================================================================================================~n"),
+    io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),
     case find_other_sensor() of
         ok ->
             {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-            %{ok, Angle_Pid} = hera:start_measure(target_angle, []),
-            %persistent_term:put(target_angle, Angle_Pid),
-            persistent_term:put(sonar_sensor, Sonar_Pid);
+            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
+            persistent_term:put(sonar_sensor, Sonar_Pid),
+            persistent_term:put(target_angle, Angle_Pid);            
         _ -> 
             {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
             persistent_term:put(sonar_sensor, Sonar_Pid)
@@ -253,7 +254,7 @@ reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
     exit_measure_module(sonar_sensor),
-    %exit_measure_module(target_angle),
+    exit_measure_module(target_angle),
     %exit_measure_module(kalman_measure),
 
     timer:sleep(500),
