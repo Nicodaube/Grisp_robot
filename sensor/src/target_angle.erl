@@ -11,7 +11,8 @@
 init(_Args) ->
     timer:sleep(1500),
     io:format("[TARGET_ANGLE] Spawning~n"),
-    {ok, #{seq => 1}, #{
+    Init_seq = get_initial_seq(),
+    {ok, #{seq => Init_seq}, #{
         name => angle_measure,
         iter => infinity,
         timeout => 300
@@ -69,7 +70,7 @@ compute_angle(X, Y, Ox, Oy, Dist, Odist) ->
             ClampedCosAlpha = max(-1.0, min(1.0, CosAlpha)),
             AlphaRadians = math:acos(ClampedCosAlpha),
             AlphaDegrees = AlphaRadians * 180 / math:pi(),
-            io:format("[TARGET_ANGLE] Computed angle : ~p~n", [AlphaDegrees]),
+            %io:format("[TARGET_ANGLE] Computed angle : ~p~n", [AlphaDegrees]),
             {ok, AlphaDegrees}
     end.
 
@@ -82,3 +83,17 @@ get_distance_sensors(X, Y, Ox, Oy) ->
     Result = math:sqrt(math:pow(Ox - X, 2) + math:pow(Oy - Y, 2)) *100,
     %io:format("[TARGET_ANGLE] other sensor is at : ~p~n", [Result]),
     Result.
+
+%============================================================================================================================================
+%=============================================================== HELPING  FUNC ==============================================================
+%============================================================================================================================================
+
+get_initial_seq() ->
+    SensorName = persistent_term:get(sensor_name),
+    case hera_data:get(angle, SensorName) of
+        [{_, _, Seq, [_]}] -> % Case where the sonar sensor crashed and was reloaded (need to find the latest seq number)
+            io:format("[TARGET_ANGLE] Recovering from crash"),
+            Seq+1;
+        [] ->  % Classical sensor bootstrap
+            1
+    end.
