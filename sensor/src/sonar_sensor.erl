@@ -2,7 +2,7 @@
 
 -behavior(hera_measure).
 
--define(ROBOT_HEIGHT, 30).
+-define(ROBOT_HEIGHT, 0). % RESETED TO 0, try
 -export([init/1, measure/1]).
 
 %============================================================================================================================================
@@ -124,20 +124,29 @@ get_ground_distance(State, SensorName, D) ->
     % @param State : the internal state of the module (tuple)
     % @param SensorName : the name of the current sensor (atom)
     % @parma D : Sonar measure in cm (integer)
+
+
+    % TODO: CORRECT GROUND DISTANCE, FOR NOW JUST STORING DIST
     Seq = maps:get(seq, State, 1),
-    case hera_data:get(pos, SensorName) of
-        [{_, _, _, [_ , _, H, _]}] ->
-            True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - ?ROBOT_HEIGHT, 2)), 3), % Taking the height of the sonar into account
+    hera_data:store(distance, SensorName, Seq, [D]),
+    NewState = State#{seq => Seq + 1},
+    {ok, [D], distance, SensorName, NewState}.
 
-            %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
 
-            hera_data:store(distance, SensorName, Seq, [True_measure]),
-            NewState = State#{seq => Seq + 1},
-            {ok, [True_measure], distance, SensorName, NewState};
-        Msg ->
-            io:format("[SONAR_SENSOR] Cannot get sensor height : ~p~n",[Msg]),
-            {stop, cannot_get_height}
-    end.
+    %Seq = maps:get(seq, State, 1),
+    %case hera_data:get(pos, SensorName) of
+    %    [{_, _, _, [_ , _, H, _]}] ->
+    %        True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100) - ?ROBOT_HEIGHT, 2)), 3), % Taking the height of the sonar into account
+    %
+    %        %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
+    %
+    %        hera_data:store(distance, SensorName, Seq, [True_measure]),
+    %        NewState = State#{seq => Seq + 1},
+    %        {ok, [True_measure], distance, SensorName, NewState};
+    %    Msg ->
+    %        io:format("[SONAR_SENSOR] Cannot get sensor height : ~p~n",[Msg]),
+    %        {stop, cannot_get_height}
+    %end.
 
 %============================================================================================================================================
 %=========================================================== HELPER FUNC ====================================================================

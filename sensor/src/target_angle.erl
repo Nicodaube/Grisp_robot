@@ -69,7 +69,7 @@ compute_angle(X, Y, Ox, Oy, Dist, Odist) ->
             ClampedCosAlpha = max(-1.0, min(1.0, CosAlpha)),
             AlphaRadians = math:acos(ClampedCosAlpha),
             AlphaDegrees = AlphaRadians * 180 / math:pi(),
-            io:format("[TARGET_ANGLE] Dist between sensors : ~p~nDist from current sensor : ~p~nDist from other sensor : ~p~nAngle : ~p~n", [DistSens, Dist, Odist, AlphaDegrees]),
+            io:format("[TARGET_ANGLE] Computed angle : ~p~n", [AlphaDegrees]),
             {ok, AlphaDegrees}
     end.
 
