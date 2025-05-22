@@ -12,7 +12,6 @@
 init(_Args) ->
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     Init_seq = get_sensor_role(),
-
     {ok, #{seq => Init_seq}, #{
         name => sonar_sensor,
         iter => infinity,
@@ -20,7 +19,6 @@ init(_Args) ->
     }}.
     
 measure(State) ->    
-    
     SensorName = persistent_term:get(sensor_name),
     Current_time = erlang:system_time(millisecond),
     case persistent_term:get(sensor_role) of
