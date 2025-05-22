@@ -9,7 +9,7 @@
 %============================================================================================================================================
 
 init(_Args) ->
-    timer:sleep(1500),
+    timer:sleep(500),
     io:format("[TARGET_ANGLE] Spawning~n"),
     Init_seq = get_initial_seq(),
     {ok, #{seq => Init_seq}, #{
