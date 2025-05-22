@@ -172,6 +172,7 @@ reset_state() ->
     % @param Id : Sensor's Id set by the jumpers (Integer)
     %exit_measure_module(sonar_sensor),
     exit_measure_module(kalman_measure),
+    hera_com:reset_devices(),
 
     timer:sleep(500),
     reset_data(),
