@@ -101,10 +101,10 @@ loop() ->
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop();
         {hera_notify, Msg} -> % Unhandled Message
-            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            io:format("[ROBOT] Received unhandled message : ~p~n", [Msg]),
             loop();
         Msg -> % Message not from hera_notify
-            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
+            io:format("[ROBOT] receive strange message : ~p~n",[Msg]),
             loop()
     end.
 
@@ -161,7 +161,9 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
 
 start_measures() ->
     % Launch all the hera_measure modules to gather data
-    % @param Id : Sensor's Id set by the jumpers (Integer)            
+    % @param Id : Sensor's Id set by the jumpers (Integer)   
+    io:format("=================================================================================================~n"),
+    io:format("~n~n[ROBOT] Start received, starting the computing phase~n"),         
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
     persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
@@ -181,13 +183,14 @@ reset_state() ->
     grisp_led:flash(1, green, 1000),      
 
     discover_server(),            
-    io:format("[SENSOR] Waiting for start signal ...~n~n"),
+    io:format("[ROBOT] Waiting for start signal ...~n~n"),
     loop().
 
 reset_data() ->
     % Delete all config dependent and hera_measures data
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n~n").
+    io:format("[ROBOT] Data resetted~n~n~n~n"),
+    io:format("=================================================================================================~n").
 
 exit_measure_module(Name) ->
     % Kills a module stored in persistent term
