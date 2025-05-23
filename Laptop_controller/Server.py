@@ -57,11 +57,17 @@ class Server:
                         data_split = data.split(",")
                         config_message = data_split[1]
                         id = data_split[2]
-                        origin = data_split[3]                                                
-                        if config_message == "Pos":
-                            self.ack_pos.get(id)[int(origin)-1] = True   
+                        origin = data_split[3]
+                        if origin != "robot":                                                
+                            if config_message == "Pos":
+                                self.ack_pos.get(id)[int(origin)-1] = True   
+                            else :
+                                self.ack_devices.get(id)[int(origin)-1] = True
                         else :
-                            self.ack_devices.get(id)[int(origin)-1] = True
+                            if config_message == "Pos":
+                                self.ack_pos.get(id)[len(self.sensors.key())] = True   
+                            else :
+                                self.ack_devices.get(id)[len(self.sensors.key())] = True   
                         print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)    
                     else :
                         print("[SERVER] received strange data : " + data)
@@ -120,12 +126,13 @@ class Server:
         self.ack_devices = {}
         self.ack_pos = {}
 
-        sensor_config_ok = False
         for sensor in self.sensors.values() :
 
             # Init ack status 
             self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
+            self.ack_devices["Robot"] = False
             self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
+            self.ack_pos["Robot"] = False
 
             if sensor.x != -1 :
                 ack = False
@@ -144,12 +151,18 @@ class Server:
             sensor_config_ok = ack 
 
         if sensor_config_ok:
-            """ if self.robot.ip != "0":
-                message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
-                self.send(message, "brd")
-                time.sleep(0.5)
-                message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
-                self.send(message, "brd") """
+            if self.robot.ip != "0":
+                ack = False
+                LIMIT = 0
+                while (not ack) and (LIMIT < 10):
+                    message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
+                    self.send(message, "brd")
+                    time.sleep(0.5)
+                    message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
+                    self.send(message, "brd")
+                    
+                    ack = self.check_ack("Robot")
+                    LIMIT +=1
         
             time.sleep(1)
             message = "Start " + self.HOST

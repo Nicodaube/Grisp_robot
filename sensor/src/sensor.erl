@@ -203,14 +203,14 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     ack_message("Pos", Device_name, Id),
     SensorName = list_to_atom(Device_name),
     case hera_data:get(room, SensorName) of
-        [{_, _, _, [Room]}] ->
+        [{_, _, _, [_]}] ->
             ok;
         [] ->
             hera_data:store(room, SensorName, 1, [Room])
     end,
 
     case hera_data:get(pos, SensorName) of 
-        [{_, _, _, [X, Y, H, A]}] ->
+        [{_, _, _, [_, _, _, _]}] ->
             ok;
         [] ->
             hera_data:store(pos, SensorName, 1, [X, Y, H, A])
