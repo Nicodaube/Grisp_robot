@@ -34,7 +34,7 @@ class Server:
             while True:
                 data, addr = server_socket.recvfrom(1024)
                 try :
-                    data = data.decode()                    
+                    data = data.decode()               
 
                     if data[:5] == "Hello":
                         id = data[11:]
@@ -52,7 +52,17 @@ class Server:
                     elif data[:9] == "Robot_pos":
                         data_split = data.strip().split(",")
                         if addr[0] == self.robot.ip:
-                            self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))                        
+                            self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
+                    elif data[:3] == "Ack":
+                        data_split = data.split(",")
+                        config_message = data_split[1]
+                        id = data_split[2]
+                        origin = data_split[3]                                                
+                        if config_message == "Pos":
+                            self.ack_pos.get(id)[int(origin)] = True   
+                        else :
+                            self.ack_devices.get(id)[int(origin)] = True
+                        print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)    
                     else :
                         print("[SERVER] received strange data : " + data)
                 except : 
@@ -101,27 +111,61 @@ class Server:
 
     def update_robot(self, real_pos, angle, room):
         self.robot.update_pos(real_pos[0], real_pos[1], angle, room.room_num)
-        
-    def send_pos(self):
-        self.started = True
-        for sensor in self.sensors.values() :
-            if sensor.x != -1 : 
-                message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)
-                self.send(message, "brd")
-                time.sleep(0.5)
-                message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + " , " + str(sensor.angle) + " , " + str(sensor.room)
-                self.send(message, "brd")
-                time.sleep(0.5)
 
-        """ if self.robot.ip != "0":
-            message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
+    def send_config(self):
+        threading.Thread(target=self.worker_send_config, daemon=True).start()
+
+    def worker_send_config(self):
+        self.started = True
+        self.ack_devices = {}
+        self.ack_pos = {}
+
+        sensor_config_ok = False
+        for sensor in self.sensors.values() :
+
+            # Init ack status 
+            self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
+            self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
+
+            if sensor.x != -1 :
+                ack = False
+                LIMIT = 0
+                while (not ack) and (LIMIT < 10): 
+                    message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)                
+                    self.send(message, "brd")
+                    time.sleep(0.5)
+                    message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + " , " + str(sensor.angle) + " , " + str(sensor.room)
+                    self.send(message, "brd")
+                    time.sleep(0.5)
+
+                    ack = self.check_ack("sensor_" + str(sensor.id))
+                    LIMIT += 1
+
+            sensor_config_ok = ack 
+
+        if sensor_config_ok:
+            """ if self.robot.ip != "0":
+                message = "Add_Device : robot , " + self.robot.ip + " , " + str(self.robot.port)
+                self.send(message, "brd")
+                time.sleep(0.5)
+                message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
+                self.send(message, "brd") """
+        
+            time.sleep(1)
+            message = "Start " + self.HOST
             self.send(message, "brd")
-            time.sleep(0.5)
-            message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
-            self.send(message, "brd") """
-        time.sleep(1)
-        message = "Start " + self.HOST
-        self.send(message, "brd")
+        else :
+            self.send("Exit", "brd")
+
+    def check_ack(self, id):
+        print(self.ack_devices)
+        print(self.ack_pos)
+        for i in range(len(self.sensors.keys())):
+            if not self.ack_devices.get(id)[i]:
+                return False
+            if not self.ack_pos.get(id)[i]:
+                return False
+        return True
 
 if __name__ == '__main__' :
     serv = Server()
