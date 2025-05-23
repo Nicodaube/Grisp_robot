@@ -59,9 +59,9 @@ class Server:
                         id = data_split[2]
                         origin = data_split[3]                                                
                         if config_message == "Pos":
-                            self.ack_pos.get(id)[int(origin)] = True   
+                            self.ack_pos.get(id)[int(origin)-1] = True   
                         else :
-                            self.ack_devices.get(id)[int(origin)] = True
+                            self.ack_devices.get(id)[int(origin)-1] = True
                         print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)    
                     else :
                         print("[SERVER] received strange data : " + data)
@@ -158,8 +158,6 @@ class Server:
             self.send("Exit", "brd")
 
     def check_ack(self, id):
-        print(self.ack_devices)
-        print(self.ack_pos)
         for i in range(len(self.sensors.keys())):
             if not self.ack_devices.get(id)[i]:
                 return False
