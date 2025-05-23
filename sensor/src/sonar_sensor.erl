@@ -11,7 +11,8 @@
 
 init(_Args) ->
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
-    Init_seq = get_sensor_role(),
+    get_sensor_role(),
+    Init_seq = get_init_seq(),
     {ok, #{seq => Init_seq}, #{
         name => sonar_sensor,
         iter => infinity,
@@ -59,13 +60,10 @@ get_sensor_role() ->
                     {ok, Priority} = get_rand_num(),
                     TimeClock = erlang:system_time(millisecond),
                     %io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
-                    role_handshake(Osensor, Priority, TimeClock),
-                    1;
+                    role_handshake(Osensor, Priority, TimeClock);
                 _ ->  % Case where the sonar sensor crashed and was reloaded (need to find the latest seq number)
                     io:format("[SONAR_SENSOR] Recovering from crash"),
-                    [{_, _, Seq, [_]}] = hera_data:get(distance),
-                    io:format(Seq),
-                    Seq+1
+                    ok
             end
     end.       
 
@@ -100,6 +98,13 @@ wait_ack(Osensor) ->
         _ -> wait_ack(Osensor)
     after 500 ->
         wait_ack(Osensor)
+    end.
+
+get_init_seq() ->
+    SensorName = persistent_term:get(sensor_name),
+    case hera_data:get(distance, SensorName) of
+        [{_, _, Seq, [_]}] -> Seq +1;
+        _ -> 1
     end.
 
 %============================================================================================================================================
