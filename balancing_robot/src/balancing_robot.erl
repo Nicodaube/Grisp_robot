@@ -58,7 +58,7 @@ discover_server() ->
             hera_com:add_device(list_to_atom(Name), Ip, IntPort),
             ack_loop()
     after 9000 ->
-        io:format("[ROBOT] no ping from server~n"),
+        io:format("[ROBOT] no ping from server~n~n"),
         discover_server()
     end.
 
@@ -96,7 +96,8 @@ loop() ->
             store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             start_measures();
-        {hera_notify, ["Exit"]} ->
+        {hera_notify, ["Exit"]} -> % Received when gracefully exited the controller
+            io:format("~n[SENSOR] Exit message received~n"),
             reset_state();
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop();
@@ -183,7 +184,9 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
 
 start_measures() ->
     % Launch all the hera_measure modules to gather data
-    % @param Id : Sensor's Id set by the jumpers (Integer)            
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    io:format("=================================================================================================~n"),
+    io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),            
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
     persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
@@ -210,7 +213,8 @@ reset_data() ->
     persistent_term:erase(kalman_measure),
     hera_com:reset_devices(), 
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n~n").
+    io:format("[SENSOR] Data resetted~n~n~n~n"),
+    io:format("=================================================================================================~n").
 
 exit_measure_module(Name) ->
     % Kills a module stored in persistent term
