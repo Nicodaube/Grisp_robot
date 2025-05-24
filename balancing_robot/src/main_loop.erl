@@ -100,12 +100,13 @@ robot_loop(State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 calibrate() ->
+    grisp_led:flash(1, green, 500),
     io:format("[ROBOT] Calibrating... Do not move the pmod_nav!~n"),
     N = 500,
     Y_List = [pmod_nav:read(acc, [out_y_g]) || _ <- lists:seq(1, N)],
     Gy0 = lists:sum([Y || [Y] <- Y_List]) / N,
     io:format("[ROBOT] Done calibrating~n"),
-    [grisp_led:flash(L, green, 500) || L <- [1, 2]],
+    grisp_led:flash(1, green, 500),
     persistent_term:put(gy0, Gy0).    
 
 init_kalman() ->

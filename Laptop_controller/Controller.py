@@ -146,7 +146,6 @@ class User_interface:
         if self.in_popup:
             return
         
-        robot_room = None
         for room in range(len(self.rooms)):
 
             for side in ["L", "R", "T", "B"]:
@@ -167,9 +166,6 @@ class User_interface:
             
             room_rect = pygame.Rect(0, 0, room_obj.width, room_obj.height)
             room_rect.center = room_obj.pos
-
-            if room_rect.collidepoint(event.pos):
-                robot_room = room_obj
         
         if len(self.rooms) == 0 and self.is_click_image("plus_L_0", event):
             self.in_popup = True
@@ -177,7 +173,7 @@ class User_interface:
             self.create_room_popup()
 
         elif self.is_click_image("start", event) :
-            self.server.send_pos()
+            self.server.send_config()
             time.sleep(2)
             self.is_trajectory_started = True
             self.timer = pygame.time.get_ticks()/1000

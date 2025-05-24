@@ -58,7 +58,7 @@ discover_server() ->
             hera_com:add_device(list_to_atom(Name), Ip, IntPort),
             ack_loop()
     after 9000 ->
-        io:format("[ROBOT] no ping from server~n"),
+        io:format("[ROBOT] no ping from server~n~n"),
         discover_server()
     end.
 
@@ -96,7 +96,8 @@ loop() ->
             store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             start_measures();
-        {hera_notify, ["Exit"]} ->
+        {hera_notify, ["Exit"]} -> % Received when gracefully exited the controller
+            io:format("~n[SENSOR] Exit message received~n"),
             reset_state();
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop();
@@ -114,17 +115,18 @@ loop() ->
 
 add_device(Name, SIp, SPort) ->
     % Adds a device to the list of known devices
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param Name : name of the device to register (String)
     % @param SIp : IP adress (String)
     % @param SPort : Port (String)
+    ack_message("Add_device", Name),
     case list_to_atom(Name) of 
         robot -> % Don't register self
             ok;
-        OName -> 
-            io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+        OName ->             
             {ok, Ip} = inet:parse_address(SIp),
             Port = list_to_integer(SPort),
-            hera_com:add_device(OName, Ip, Port)
+            hera_com:add_device(OName, Ip, Port)      
     end,            
     loop().
 
@@ -137,12 +139,19 @@ store_robot_position(SPosx, SPosy, SAngle, SRoom) ->
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
     Angle = list_to_integer(SAngle),
-    Room = list_to_integer(SRoom),            
-    hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room]),
+    Room = list_to_integer(SRoom),  
+    ack_message("Pos", "robot"),
+    case hera_data:get(robot_pos) of
+        [{_, _, _, [_, _, _, _]}] ->
+            ok;
+        [] ->
+            hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room])
+    end,
     loop().
 
 store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     % Store the position of a sensor
+    % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param Xs : X axis position (String)
     % @param Ys : Y axis position (String)
     % @param Hs : Z axis position (String)
@@ -153,15 +162,31 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     H = list_to_float(Hs),
     A = list_to_integer(As),
     Room = list_to_integer(RoomS),
-    SensorName = list_to_atom("sensor_" ++ Ids),
-    hera_data:store(room, SensorName, 1, [Room]),
-    hera_data:store(pos, SensorName, 1, [X, Y, H, A]),
-    %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
+    Device_name = "sensor_" ++ Ids,
+    ack_message("Pos", Device_name),
+    SensorName = list_to_atom(Device_name),
+    case hera_data:get(room, SensorName) of
+        [{_, _, _, [_]}] ->
+            ok;
+        [] ->
+            hera_data:store(room, SensorName, 1, [Room])
+    end,
+
+    case hera_data:get(pos, SensorName) of 
+        [{_, _, _, [_, _, _, _]}] ->
+            ok;
+        [] ->
+            hera_data:store(pos, SensorName, 1, [X, Y, H, A])
+    end,
+    
+    %io:format("[ROBOT] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
     loop().
 
 start_measures() ->
     % Launch all the hera_measure modules to gather data
-    % @param Id : Sensor's Id set by the jumpers (Integer)            
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    io:format("=================================================================================================~n"),
+    io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),            
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
     persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
@@ -185,8 +210,11 @@ reset_state() ->
 
 reset_data() ->
     % Delete all config dependent and hera_measures data
+    persistent_term:erase(kalman_measure),
+    hera_com:reset_devices(), 
     hera_data:reset(),
-    io:format("[SENSOR] Data resetted~n~n").
+    io:format("[SENSOR] Data resetted~n~n~n~n"),
+    io:format("=================================================================================================~n").
 
 exit_measure_module(Name) ->
     % Kills a module stored in persistent term
@@ -198,3 +226,10 @@ exit_measure_module(Name) ->
         _ -> 
             exit(Pid, shutdown)
     end.
+
+ack_message(Message, Device) ->
+    % Used to send the acknowledgment message to the controller.
+    % @param Message : The initial type message received by the robot (String)
+    % @param Device : The name of the device concerned by the message (String)
+    Msg = "Ack," ++ Message ++ "," ++ Device ++ ",robot",
+    send_udp_message(server, Msg, "UTF8").

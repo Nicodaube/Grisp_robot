@@ -152,15 +152,15 @@ add_device(Id, Name, SIp, SPort) ->
     % @param Name : name of the device to register (String)
     % @param SIp : IP adress (String)
     % @param SPort : Port (String)
+    ack_message("Add_device", Name, Id),
     SelfName = persistent_term:get(sensor_name),
     case list_to_atom(Name) of 
         SelfName -> % Don't register self
             ok;
-        OName -> 
-            io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
+        OName ->             
             {ok, Ip} = inet:parse_address(SIp),
             Port = list_to_integer(SPort),
-            hera_com:add_device(OName, Ip, Port)
+            hera_com:add_device(OName, Ip, Port)        
     end,            
     loop(Id).
 
@@ -175,8 +175,14 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
     Angle = list_to_integer(SAngle),
-    Room = list_to_integer(SRoom),            
-    hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
+    Room = list_to_integer(SRoom),  
+    ack_message("Pos", "robot", Id),  
+    case hera_data:get(robot_pos) of
+        [{_, _, _, [_, _, _, _]}] ->
+            ok;
+        [] ->
+            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room])
+    end,        
     loop(Id).
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
@@ -192,9 +198,23 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     H = list_to_float(Hs),
     A = list_to_integer(As),
     Room = list_to_integer(RoomS),
-    SensorName = list_to_atom("sensor_" ++ Ids),
-    hera_data:store(room, SensorName, 1, [Room]),
-    hera_data:store(pos, SensorName, 1, [X, Y, H, A]),
+    Device_name = "sensor_" ++ Ids,
+    ack_message("Pos", Device_name, Id),
+    SensorName = list_to_atom(Device_name),
+    case hera_data:get(room, SensorName) of
+        [{_, _, _, [_]}] ->
+            ok;
+        [] ->
+            hera_data:store(room, SensorName, 1, [Room])
+    end,
+
+    case hera_data:get(pos, SensorName) of 
+        [{_, _, _, [_, _, _, _]}] ->
+            ok;
+        [] ->
+            hera_data:store(pos, SensorName, 1, [X, Y, H, A])
+    end,
+    
     %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
     loop(Id).
 
@@ -329,3 +349,7 @@ get_Osensor(Room) ->
         [],
         Devices
     ).
+
+ack_message(Message, Device, Id) ->
+    Msg = "Ack," ++ Message ++ "," ++ Device ++ "," ++ integer_to_list(Id),
+    send_udp_message(server, Msg, "UTF8").
