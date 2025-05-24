@@ -58,6 +58,7 @@ class Server:
                         config_message = data_split[1]
                         id = data_split[2]
                         origin = data_split[3]
+                        
                         if origin != "robot":                                                
                             if config_message == "Pos":
                                 self.ack_pos.get(id)[int(origin)-1] = True   
@@ -68,7 +69,8 @@ class Server:
                                 self.ack_pos.get(id)[len(self.sensors.key())] = True   
                             else :
                                 self.ack_devices.get(id)[len(self.sensors.key())] = True   
-                        print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)    
+                        print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)                           
+                         
                     else :
                         print("[SERVER] received strange data : " + data)
                 except : 
@@ -129,10 +131,10 @@ class Server:
         for sensor in self.sensors.values() :
 
             # Init ack status 
-            self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
-            self.ack_devices["Robot"] = False
-            self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()))]
-            self.ack_pos["Robot"] = False
+            self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
+            self.ack_devices["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
+            self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
+            self.ack_pos["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
 
             if sensor.x != -1 :
                 ack = False
@@ -161,7 +163,7 @@ class Server:
                     message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
                     self.send(message, "brd")
                     
-                    ack = self.check_ack("Robot")
+                    ack = self.check_ack("robot")
                     LIMIT +=1
         
             time.sleep(1)
