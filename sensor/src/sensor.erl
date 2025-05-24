@@ -158,16 +158,9 @@ add_device(Id, Name, SIp, SPort) ->
         SelfName -> % Don't register self
             ok;
         OName ->             
-            Devices = persistent_term:get(devices, []),
-            case lists:member(OName, Devices) of % Don't add multiple times the same device
-                true ->
-                    ok;
-                false -> 
-                    io:format("[SENSOR] Discovered new device : ~p~n", [Name]),
-                    {ok, Ip} = inet:parse_address(SIp),
-                    Port = list_to_integer(SPort),
-                    hera_com:add_device(OName, Ip, Port)
-            end            
+            {ok, Ip} = inet:parse_address(SIp),
+            Port = list_to_integer(SPort),
+            hera_com:add_device(OName, Ip, Port)        
     end,            
     loop(Id).
 
@@ -182,8 +175,14 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
     Angle = list_to_integer(SAngle),
-    Room = list_to_integer(SRoom),            
-    hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room]),
+    Room = list_to_integer(SRoom),  
+    ack_message("Pos", "robot", Id),  
+    case hera_data:get(robot_pos) of
+        [{_, _, _, [_, _, _, _]}] ->
+            ok;
+        [] ->
+            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room])
+    end,        
     loop(Id).
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
