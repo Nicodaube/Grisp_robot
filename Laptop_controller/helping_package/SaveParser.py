@@ -1,5 +1,5 @@
-from Room import Room
-import help_fun
+from components.Room import Room
+from helping_package import help_fun
 
 def parse(filename, current_height, current_resize):
     rooms = []

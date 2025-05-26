@@ -4,10 +4,10 @@ import sys
 import numpy as np
 import serial
 from Server import Server
-from Room import Room
-from Robot import Robot
+from components.Room import Room
+from components.Robot import Robot
 from pathlib import Path
-import SaveParser
+import helping_package.SaveParser
 import time
 
 class User_interface:
