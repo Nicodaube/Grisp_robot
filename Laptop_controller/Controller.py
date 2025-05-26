@@ -15,32 +15,37 @@ class User_interface:
     # App General State
     WIDTH, HEIGHT = 1920, 1080 # Screen Size
     RESIZE = 2 # Resizing factor for the rooms
-    running = True
-    in_popup = False
-    active_popup = None
-    UI_elements = {}
-    temp_origin = None
-    x = 0
-    string = ""
-    image_dict = {}
-    rect_dict = {}
+    running = True # True until quit command received
+    image_dict = {} # Contains all the images object
+    rect_dict = {} # Contains all the images rect
+
+    # Pop Up
+    in_popup = False # True if there's an active popup
+    active_popup = None # Actual pop-up object
+    UI_elements = {} # Elements of the current popup
+    temp_origin = None # Used to keep track of the origin button in a popup
+
+    # Robot controll
+    x = 0 # Robot command
+    string = "" # String to be printed on screen
+    
 
     # App Room state
-    room_grid = ((0,0),(0,0))
-    rooms = []
-    sensor = []
+    room_grid = ((0,0),(0,0)) # Building grid (from top left to bottom right)
+    rooms = [] # List of defined rooms
+    sensor = [] # List of defined sensors
 
     # Predefined trajectory
-    trajectory = []
-    trajectory_idx = 0
-    current_action = ""
-    action_start_time = 0
-    action_duration = 0
-    is_trajectory_started = False
-    timer = 0
+    trajectory = [] # List of predefined commands
+    trajectory_idx = 0 # Command index
+    current_action = "" # Name of the current command
+    action_start_time = 0 # Time at the start of the trajectory
+    action_duration = 0 # Total time duration of the command
+    is_trajectory_started = False # Set to true when the trajectory begins
+    timer = 0 # Keeps track of the time since started
 
     # Robot UI
-    robot = None
+    robot = None # Robot object
 
     # Robot state
     message = 0  #Message to send to the robot
@@ -72,7 +77,7 @@ class User_interface:
 
         self.load_figures()
 
-    def load_figures(self):
+    def load_figures(self): # Loads all the images that will appear on screen
         arrow_img = pygame.image.load('./img/arrow.png')
         arrow_img = pygame.transform.scale(arrow_img, (arrow_img.get_width() // 4, arrow_img.get_height() // 4))
 
