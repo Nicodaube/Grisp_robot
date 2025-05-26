@@ -1,5 +1,5 @@
-from Side import Side
-import help_fun
+from components.Side import Side
+from helping_package import help_fun
 
 class Room:
 

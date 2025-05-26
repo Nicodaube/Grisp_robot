@@ -4,43 +4,47 @@ import sys
 import numpy as np
 import serial
 from Server import Server
-from Room import Room
-from Robot import Robot
+from components.Room import Room
+from components.Robot import Robot
 from pathlib import Path
-import SaveParser
+from  helping_package import SaveParser
 import time
 
 class User_interface:
 
     # App General State
-    WIDTH, HEIGHT = 1920, 1080 # Screen Size
     RESIZE = 2 # Resizing factor for the rooms
-    running = True
-    in_popup = False
-    active_popup = None
-    UI_elements = {}
-    temp_origin = None
-    x = 0
-    string = ""
-    image_dict = {}
-    rect_dict = {}
+    running = True # True until quit command received
+    image_dict = {} # Contains all the images object
+    rect_dict = {} # Contains all the images rect
+
+    # Pop Up
+    in_popup = False # True if there's an active popup
+    active_popup = None # Actual pop-up object
+    UI_elements = {} # Elements of the current popup
+    temp_origin = None # Used to keep track of the origin button in a popup
+
+    # Robot controll
+    x = 0 # Robot command
+    string = "" # String to be printed on screen
+    
 
     # App Room state
-    room_grid = ((0,0),(0,0))
-    rooms = []
-    sensor = []
+    room_grid = ((0,0),(0,0)) # Building grid (from top left to bottom right)
+    rooms = [] # List of defined rooms
+    sensor = [] # List of defined sensors
 
     # Predefined trajectory
-    trajectory = []
-    trajectory_idx = 0
-    current_action = ""
-    action_start_time = 0
-    action_duration = 0
-    is_trajectory_started = False
-    timer = 0
+    trajectory = [] # List of predefined commands
+    trajectory_idx = 0 # Command index
+    current_action = "" # Name of the current command
+    action_start_time = 0 # Time at the start of the trajectory
+    action_duration = 0 # Total time duration of the command
+    is_trajectory_started = False # Set to true when the trajectory begins
+    timer = 0 # Keeps track of the time since started
 
     # Robot UI
-    robot = None
+    robot = None # Robot object
 
     # Robot state
     message = 0  #Message to send to the robot
@@ -58,7 +62,10 @@ class User_interface:
     def __init__(self, trajectory):
 
         pygame.init()
-        self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        #self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        info = pygame.display.Info()
+        self.WIDTH, self.HEIGHT = info.current_w, info.current_h
+
         
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("Robot Controller")
@@ -72,7 +79,7 @@ class User_interface:
 
         self.load_figures()
 
-    def load_figures(self):
+    def load_figures(self): # Loads all the images that will appear on screen
         arrow_img = pygame.image.load('./img/arrow.png')
         arrow_img = pygame.transform.scale(arrow_img, (arrow_img.get_width() // 4, arrow_img.get_height() // 4))
 
@@ -126,7 +133,9 @@ class User_interface:
         self.image_dict["zoom_out"] = zoom_out
         self.image_dict["robot"] = robot
 
-######################################################### TRIGGER CHECK #################################################
+#==========================================================================================================================================
+#===================================================== TRIGGER CHECK ======================================================================
+#==========================================================================================================================================
 
     def event_handler(self):
         for event in pygame.event.get():
@@ -147,7 +156,6 @@ class User_interface:
             return
         
         for room in range(len(self.rooms)):
-
             for side in ["L", "R", "T", "B"]:
                 name = "plus_" + side + "_" + str(room)
                 if self.is_click_image(name, event) :
@@ -197,7 +205,6 @@ class User_interface:
                 self.RESIZE -= 1
 
         elif self.is_click_image("zoom_out", event):  
-
             for room in self.rooms:
                 room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
             self.RESIZE += 1
@@ -251,8 +258,6 @@ class User_interface:
                 print("[CONTROLLER] Error with the robot placement")
             self.close_popup()
 
-
-        
         #Check sensor choice 
         sensors = self.server.get_sensors()
         for id in sensors:
@@ -280,7 +285,9 @@ class User_interface:
                                             
         self.in_popup = False
 
-######################################################### KEYBOARD FUNCTIONS #################################################
+#==========================================================================================================================================
+#===================================================== KEYBOARD COMMANDS ==================================================================
+#==========================================================================================================================================
 
     def check_keys_movement(self, keys):
         if keys[pygame.K_SPACE]:
@@ -334,9 +341,11 @@ class User_interface:
         else:
             self.release_enter = True
 
-######################################################### DRAWING FUNCTIONS #################################################
+#==========================================================================================================================================
+#===================================================== DRAWING FUNCTIONS ==================================================================
+#==========================================================================================================================================
 
-    def update_screen_size(self):   
+    def update_screen_size(self):
         self.WIDTH, self.HEIGHT = self.screen.get_size()
         self.manager.set_window_resolution((self.WIDTH, self.HEIGHT))
 
@@ -440,7 +449,9 @@ class User_interface:
             x, y = self.get_screen_pos(self.robot.real_pos[0], self.robot.real_pos[1])
             self.draw_image("robot", x, y)
 
-######################################################## POPUPS CREATORS #####################################################
+#==========================================================================================================================================
+#===================================================== POPUP LOGIC ========================================================================
+#==========================================================================================================================================
     
     def create_choice_popup(self):
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -859,7 +870,9 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
-######################################################### SERIAL COMM FUNCTIONS #################################################
+#==========================================================================================================================================
+#===================================================== SERIAL COMMUNICATION ===============================================================
+#==========================================================================================================================================
 
     def serial_comm(self):
         data = self.run << 7 | self.kalman << 6 | self.test << 5 | self.stand << 4 | (self.x.real == 1) << 3 | (self.x.real == -1) << 2 | (
@@ -881,7 +894,9 @@ class User_interface:
         else:
             self.trajectory = None
 
-############################################################ HELPER FUNCTIONS #####################################################
+#==========================================================================================================================================
+#===================================================== HELPER FUNCTION ====================================================================
+#==========================================================================================================================================
     def is_click_image(self, name, event):
         return self.rect_dict.get(name) != None and self.rect_dict.get(name).collidepoint(event.pos)
     
@@ -895,7 +910,7 @@ class User_interface:
     def compute_pos_room(self, adapted_height, adapted_width, side, room_num):
         x, y = self.rect_dict[self.temp_origin].center[0], self.rect_dict[self.temp_origin].center[1]
         if room_num == 0 :
-         return x, y
+            return x, y
         else :
             match side :
                 case "L":
@@ -1014,7 +1029,9 @@ class User_interface:
         files = [f.name for f in directory.iterdir() if f.is_file()]
         return files
 
-######################################################### MAIN LOOP ############################################################
+#==========================================================================================================================================
+#===================================================== MAIN LOOP ==========================================================================
+#==========================================================================================================================================
 
     def main_loop(self):
         while self.running:
@@ -1049,7 +1066,7 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            self.serial_comm()
+            #self.serial_comm()
 
         # Quit
         pygame.quit()
