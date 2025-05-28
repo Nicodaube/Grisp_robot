@@ -52,7 +52,7 @@ class Server:
                     else : # Default case
                         print("[SERVER] received strange data : " + data)
                 except : 
-                    print("[SERVER] Exception raised in receiving server")
+                    pass
 
 #==========================================================================================================================================
 #===================================================== RECEIVE SERVER FUNCTIONS ===========================================================
@@ -81,6 +81,7 @@ class Server:
 
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
+            with open
             self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
 
     def handle_ack(self, data):
