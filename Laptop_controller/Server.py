@@ -2,6 +2,7 @@ import socket
 import threading
 from components.Sensor import Sensor
 from components.Robot import Robot
+from helping_package.csv_saver import CSV_saver
 import time
 
 class Server:
@@ -18,6 +19,8 @@ class Server:
         self.rcvServer.start()
         self.pinger = threading.Thread(target=self.ping_server, daemon=True)
         self.pinger.start()
+
+        self.csv_saver = CSV_saver()
 
 #==========================================================================================================================================
 #===================================================== PINGER SERVER ======================================================================
@@ -52,7 +55,7 @@ class Server:
                     else : # Default case
                         print("[SERVER] received strange data : " + data)
                 except : 
-                    print("[SERVER] Exception raised in receiving server")
+                    pass
 
 #==========================================================================================================================================
 #===================================================== RECEIVE SERVER FUNCTIONS ===========================================================
@@ -81,6 +84,7 @@ class Server:
 
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
+            self.csv_saver.save_pos_sonar(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
             self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
 
     def handle_ack(self, data):
