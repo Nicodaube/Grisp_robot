@@ -114,4 +114,4 @@ get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
                     NewX = X1 + X
             end
     end,
-    {NewX, NewY}.
+    {abs(NewX)/100, abs(NewY)/100}.
