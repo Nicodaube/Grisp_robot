@@ -75,7 +75,7 @@ discover_server(Id) ->
 ack_loop(Id) ->
     % Tries to pair with the server by a Hello -> Ack
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    send_udp_message(server, "Hello from " ++ integer_to_list(Id), "UTF8"),
+    send_udp_message(server, "Hello," ++ integer_to_list(Id), "UTF8"),
     receive
         {hera_notify, ["Ack", _]} -> % Ensures the discovery of the sensor by the server
             io:format("[SENSOR] Received ACK from server~n"),
