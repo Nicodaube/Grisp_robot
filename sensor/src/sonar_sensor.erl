@@ -16,7 +16,7 @@ init(_Args) ->
     {ok, #{seq => Init_seq}, #{
         name => sonar_sensor,
         iter => infinity,
-        timeout => 300
+        timeout => 20
     }}.
     
 measure(State) ->    
@@ -29,17 +29,15 @@ measure(State) ->
                 Phase >= 0, Phase < 50 ->
                     get_measure(State, SensorName);
                 true ->
-                    timer:sleep((100 - Phase) + 5),
-                    get_measure(State, SensorName)
+                    {undefined, State}
             end;
         {slave, TimeClock, Offset} ->
             Phase = get_phase(TimeClock, Current_time, Offset),
             if 
-                Phase >= 50, Phase < 100 ->
+                Phase >= 100, Phase < 150 ->
                     get_measure(State, SensorName);
                 true ->
-                    timer:sleep((100 - Phase) + 5),
-                    get_measure(State, SensorName)
+                    {undefined, State}
             end
 
         end.
@@ -169,19 +167,19 @@ get_rand_num() ->
     {ok, rand:uniform(3000)}.   
 
 get_phase(TimeClock, Current_time) ->
-    Phase = (Current_time - TimeClock) rem 100,
+    Phase = (Current_time - TimeClock) rem 200,
     case Phase < 0 of
         true ->
-            100 - Phase;
+            200 - Phase;
         false ->
             Phase
     end.
 
 get_phase(TimeClock, Current_time, Offset) ->
-    Phase = (Current_time + Offset - TimeClock) rem 100,
+    Phase = (Current_time + Offset - TimeClock) rem 200,
     case Phase < 0 of
         true ->
-            100 - Phase;
+            200 - Phase;
         false ->
             Phase
     end.
