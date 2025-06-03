@@ -140,6 +140,7 @@ get_ground_distance(State, SensorName, D) ->
             end,
     
             %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
+            hera_com:send_unicast(server, "Distance,"++float_to_list(True_measure)++","++atom_to_list(SensorName), "UTF8"),
     
             hera_data:store(distance, SensorName, Seq, [True_measure]),
             NewState = State#{seq => Seq + 1},

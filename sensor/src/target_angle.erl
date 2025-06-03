@@ -25,7 +25,7 @@ measure(State) ->
     {ok, [X, Y, Dist]} = get_data(SensorName),
     {ok, [Ox, Oy, Odist]} = get_data(Osensor),                
     {ok, Angle} = compute_angle(X, Y, Ox, Oy, Dist, Odist),
-    %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle])
+    %io:format("[TARGET_ANGLE] Robot at angle : ~p~n",[Angle]),
     hera_data:store(angle, SensorName, Seq, [Angle]),
     NewState = State#{seq => Seq + 1},
     {ok, [Angle], angle, SensorName, NewState}. 
