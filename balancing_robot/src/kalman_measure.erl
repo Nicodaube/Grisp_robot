@@ -18,18 +18,32 @@ init(_Args) ->
     }}.
     
 measure(State) ->
+    Seq = maps:get(seq, State, 1),
+    NewState = State#{seq => Seq +1},
+    {Xpred, Ypred, AnglePred, RoomPred} = kalman_predict(),
+    {Xupd, Yupd, AngleUpd, RoomUpd} = kalman_update(Xpred, Ypred, AnglePred, RoomPred),
+
+    io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[Xupd, Yupd, AngleUpd, RoomUpd]),
+    send_robot_pos([Xupd, Yupd, AngleUpd, RoomUpd]),
+    {ok, [Xupd, Yupd, AngleUpd, RoomUpd], robot_pos, robot, NewState}.
+
+    
+%============================================================================================================================================
+%======================================================= KALMAN FUNC ========================================================================
+%============================================================================================================================================ 
+
+kalman_predict() ->
     case hera_data:get(robot_pos, robot) of
-        [{_, _, _, [_, _, OldAngle, OldRoom]}] ->
-            Seq = maps:get(seq, State, 1),
-            NewState = State#{seq => Seq +1},
-            {X, Y} = get_new_robot_pos(OldRoom),
-            io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[X, Y, OldAngle, OldRoom]),
-            send_robot_pos([X, Y, OldAngle, OldRoom]),
-            {ok, [X, Y, OldAngle, OldRoom], robot_pos, robot, NewState};
+        [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
+            {OldX, OldY, OldAngle, OldRoom};           
         _ ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
             {stop, no_robot_pos}
     end.
+
+kalman_update(_Xpred, _Ypred, AnglePred, RoomPred) ->
+    {X, Y} = get_new_robot_pos(RoomPred),
+    {X, Y, AnglePred, RoomPred}.
 
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
@@ -44,10 +58,10 @@ get_new_robot_pos(Room) ->
     [Sensor1, Sensor2] = get_room_sensors(Room),
     %io:format("[KALMAN_MEASURE] The two sensors in the current room are : ~p and ~p ~n",[Sensor1, Sensor2]),
     {X1, Y1, A1} = get_sensor_pos(Sensor1),
-    {X2, Y2, _} = get_sensor_pos(Sensor2),
+    {X2, Y2, _A2} = get_sensor_pos(Sensor2),
     [{_, _, _, [Dist1]}] = hera_data:get(distance, Sensor1),
     [{_, _, _, [Angle1]}] = hera_data:get(angle, Sensor1),
-    %[{_, _, _, [Dist2]}] = hera_data:get(distance, Sensor2),
+    [{_, _, _, [_Dist2]}] = hera_data:get(distance, Sensor2),
     Y = abs(Dist1 * math:sin(Angle1)),
     X = abs(Dist1 * math:cos(Angle1)),
     get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}).
