@@ -37,6 +37,10 @@ kalman_predict() ->
 
     case hera_data:get(robot_pos, robot) of
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
+
+            [_Avx, _Avy, _Avz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]), % Get angular velocity x,y,z
+            [_Accx, _Accy, _Accz] = pmod_nav:read(acc, [out_x_x1, out_y_x1, out_z_x1]), % Get acceleration x,y,z
+
             {OldX, OldY, OldAngle, OldRoom};           
         _ ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
