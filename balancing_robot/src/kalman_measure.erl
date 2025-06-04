@@ -27,12 +27,14 @@ measure(State) ->
     send_robot_pos([Xupd, Yupd, AngleUpd, RoomUpd]),
     {ok, [Xupd, Yupd, AngleUpd, RoomUpd], robot_pos, robot, NewState}.
 
-    
 %============================================================================================================================================
 %======================================================= KALMAN FUNC ========================================================================
 %============================================================================================================================================ 
 
-kalman_predict() ->
+kalman_predict() -> 
+    % Implements the prediction phase of the kalman measure using robot relative data and old estimate
+    % @return {X, Y, Angle, Room} the estimate after the prediction phase (Float, Float, Integer, Integer)
+
     case hera_data:get(robot_pos, robot) of
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
             {OldX, OldY, OldAngle, OldRoom};           
@@ -42,31 +44,41 @@ kalman_predict() ->
     end.
 
 kalman_update(_Xpred, _Ypred, AnglePred, RoomPred) ->
-    {X, Y} = get_new_robot_pos(RoomPred),
+    % Implements the prediction phase of the kalman measure using robot relative data and old estimate
+    % @param Xpred : Prediction for position of the robot on the X axis (Float)
+    % @param Ypred : Prediction for position of the robot on the Y axis (Float)
+    % @param AnglePred : Prediction of the angle of the robot (Integer)
+    % @param RoomPred : Predicted room id (Integer)
+    % @return {X, Y, Angle, Room} the estimate after the update phase (Float, Float, Integer, Integer)
+
+    {X, Y} = get_approximate_sonar(RoomPred),
     {X, Y, AnglePred, RoomPred}.
 
 %============================================================================================================================================
-%======================================================= HELPER FUNC ========================================================================
-%============================================================================================================================================       
-
-send_robot_pos(Pos) ->
-    Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
-    Msg = "Robot_pos," ++ Pos_string,
-    hera_com:send_unicast(server, Msg, "UTF8").
+%======================================================= UPDATE FUNC ========================================================================
+%============================================================================================================================================ 
             
-get_new_robot_pos(Room) ->
-    [Sensor1, Sensor2] = get_room_sensors(Room),
-    %io:format("[KALMAN_MEASURE] The two sensors in the current room are : ~p and ~p ~n",[Sensor1, Sensor2]),
+get_approximate_sonar(Room) ->
+    % Computes an approximate position of the robot only based on the two sonars measures
+    % @param Room : The room id in which the robot is located (Integer)
+    % @return : {X, Y} an approximate (x,y) coordinate of the location of the robot (Float, Float)
+
+    [Sensor1, Sensor2] = get_sensors(Room),
+
     {X1, Y1, A1} = get_sensor_pos(Sensor1),
     {X2, Y2, _A2} = get_sensor_pos(Sensor2),
     [{_, _, _, [Dist1]}] = hera_data:get(distance, Sensor1),
     [{_, _, _, [Angle1]}] = hera_data:get(angle, Sensor1),
     [{_, _, _, [_Dist2]}] = hera_data:get(distance, Sensor2),
+
     Y = abs(Dist1 * math:sin(Angle1)),
     X = abs(Dist1 * math:cos(Angle1)),
-    get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}).
+    approximate_sonar({X1, Y1, A1}, {X2, Y2}, {X, Y}).
     
-get_room_sensors(Room) ->
+get_sensors(Room) ->
+    % Returns the device_name of the two sonars in the current room
+    % @param Room: the room id in which the robot is located (Integer)
+    % @return : [Sensor1, Sensor2, ...] the list of sensors in the current room (List of Atoms)
     Devices = persistent_term:get(devices),
     lists:foldl(
         fun({Name, _, _}, Acc) ->
@@ -85,6 +97,9 @@ get_room_sensors(Room) ->
     ).
 
 get_sensor_pos(SensorName) ->
+    % Fetches the sensor position from hera_data
+    % @param SensorName: the device name of the sensor (Atom)
+    % @return {X, Y, A} : the coordinates X and Y of the sensor and its orientation A (East = 0°) (Float, Float, Integer)
     case hera_data:get(pos, SensorName) of
         [{_, _, _, [X, Y, _, A]}] ->
             {X, Y, A};
@@ -92,7 +107,13 @@ get_sensor_pos(SensorName) ->
             io:format("[KALMAN_MEASURE] Can't get the pos of sensor : ~p~n", [SensorName])
     end.
 
-get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
+approximate_sonar({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
+    % Computes the approximate position of the robot based on data
+    % @param {X1, Y1, A1}: position of the first sensor (Float, Float, Integer)
+    % @param {X2, Y2}: position of the second sensor (Float, Float)
+    % @param {X, Y}: movement needed on the X and Y axis (Float, Float)
+    % @return: {X, Y} the approximate of the new robot position
+
     if 
         Y1 > Y2 ->
             NewY = Y1 - Y;
@@ -129,3 +150,15 @@ get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
             end
     end,
     {abs(NewX)/100, abs(NewY)/100}.
+
+%============================================================================================================================================
+%======================================================= HELPER FUNC ========================================================================
+%============================================================================================================================================       
+
+send_robot_pos(Pos) ->
+    % Sends the updated position to the server
+    % @param Pos ([X, Y, Angle, Room]) : The new position estimate for the robot (List)
+    
+    Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
+    Msg = "Robot_pos," ++ Pos_string,
+    hera_com:send_unicast(server, Msg, "UTF8").
