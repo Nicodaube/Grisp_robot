@@ -31,7 +31,7 @@ init(_Args) ->
     
 measure(State) ->
     SensorName = persistent_term:get(sensor_name),
-    Osensor = persistent_term:get(osensor)
+    Osensor = persistent_term:get(osensor),
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %% Pour le hera data il faudra avoir dans les données aussi accélération, vitesse angulaire en X,y,Z
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -39,13 +39,13 @@ measure(State) ->
         [{_, _, _, [OldX, OldY, OldAngle, OldRoom]}] ->
             %Partie SONAR
             {_, _, _, [TrueDist1]} = hera_data:get(distance, SensorName),
-            {_, _, _, [TrueDist2]} = hera_data:get(distance,Osensor)
+            {_, _, _, [TrueDist2]} = hera_data:get(distance,Osensor),
             {_, _, _, [X1, Y1, _, A1]} = hera_data:get(pos, SensorName),
             {_, _, _, [X2, Y2, _, A2]} = hera_data:get(pos, Osensor),
             
             
             %Partie avec navigation
-            DataNav = hera_data:get(nav) ## Faudrait du coup avoir les différentes données de navigation
+            DataNav = hera_data:get(nav), % Faudrait du coup avoir les différentes données de navigation
 
             %It is use to create a secure temporel windows
             Nav = [Data || {_,_,Ts,Data} <- DataNav, T0 < Ts, T1-Ts < 500],
@@ -156,10 +156,9 @@ measure(State) ->
                     NewState = State#{seq => Seq +1},
 
                     io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[OldX, OldY, OldAngle, OldRoom]),
-                    send_robot_pos(Valpos ++ Valor)
+                    send_robot_pos(Valpos ++ Valor),
                     {ok, Valpos ++ Valor, {T1, Xpos1, Ppos1, Xor1Norm, Por1, R0},SensorName,NewState}
-
-            end
+            end;
         _ ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
             {stop, no_robot_pos}
