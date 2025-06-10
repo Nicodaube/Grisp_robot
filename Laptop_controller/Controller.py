@@ -223,6 +223,11 @@ class User_interface:
                     self.add_sides(room)
                     self.rooms.append(room)
                     self.get_new_grid()
+                    TLx, TLy = room.compute_pos("TR")
+                    BRx, BRy = room.compute_pos("BL")
+                    TLpos = self.get_real_pos(TLx, TLy)
+                    BRpos = self.get_real_pos(BRx, BRy)
+                    self.server.add_edges(BRpos, TLpos)
                 except :
                     print("[ERROR] : Problem with width and height values")
             self.close_popup()
@@ -1028,7 +1033,7 @@ class User_interface:
         directory = Path("./saves")
         files = [f.name for f in directory.iterdir() if f.is_file()]
         return files
-
+        
 #==========================================================================================================================================
 #===================================================== MAIN LOOP ==========================================================================
 #==========================================================================================================================================
@@ -1059,6 +1064,7 @@ class User_interface:
             self.draw_add_room()
             self.draw_string()
             self.draw_robot()
+            #self.draw_grid()
 
             self.check_trajectory()
 

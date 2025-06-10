@@ -94,6 +94,8 @@ loop() ->
             store_robot_position(SPosx, SPosy, SAngle, SRoom);            
         {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
             store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS);
+        {hera_notify, ["Room_info", RoomId, TLx, TLy, BRx, BRy]} ->
+            store_room_info(RoomId, TLx, TLy, BRx, BRy);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             start_measures();
         {hera_notify, ["Exit"]} -> % Received when gracefully exited the controller
@@ -181,6 +183,18 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     
     %io:format("[ROBOT] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
     loop().
+
+store_room_info(RoomId, TLx, TLy, BRx, BRy) ->
+    % Store the dimension of a room
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param RoomId : Room concerned (String)
+    % @param TLx : Top left X corner position (String)
+    % @param TLy : Top left Y corner position (String)
+    % @param BRx : Bottom right X corner position (String)
+    % @param BRy : Bottom right Y corner position (String)
+    hera_data:store(room_info, RoomId, 1, [TLx, TLy, BRx, BRy]),
+    ack_message("Room_info", RoomId),
+    loop(). 
 
 start_measures() ->
     % Launch all the hera_measure modules to gather data

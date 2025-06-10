@@ -11,6 +11,7 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
+    room_edges = []
     started = False
 
     def __init__(self):
@@ -102,13 +103,17 @@ class Server:
         if origin != "robot":                                                
             if config_message == "Pos":
                 self.ack_pos.get(id)[int(origin)-1] = True   
+            elif config_message == "Room_info":
+                self.ack_rooms.get(int(id))[int(origin)-1] = True
             else :
                 self.ack_devices.get(id)[int(origin)-1] = True
         else :
             if config_message == "Pos":
-                self.ack_pos.get(id)[len(self.sensors.key())] = True   
+                self.ack_pos.get(id)[len(self.sensors.keys())] = True   
+            elif config_message == "Room_info":
+                self.ack_rooms.get(int(id))[len(self.sensors.keys())] = True
             else :
-                self.ack_devices.get(id)[len(self.sensors.key())] = True   
+                self.ack_devices.get(id)[len(self.sensors.keys())] = True   
         print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)   
 
 #==========================================================================================================================================
@@ -168,11 +173,15 @@ class Server:
         self.started = True
         self.ack_devices = {}
         self.ack_pos = {}
+        self.ack_rooms = {}
 
         for sensor in self.sensors.values() :
-            sensor_config_ok = self.send_sensor_info(sensor)
+            sensor_config_ok = self.send_sensor_infos(sensor)
 
         if sensor_config_ok:
+            room_config_ok = self.send_rooms_infos()
+
+        if room_config_ok:
             self.send_robot_info()
         
             time.sleep(1)
@@ -181,7 +190,7 @@ class Server:
         else :
             self.send("Exit", "brd")
 
-    def send_sensor_info(self, sensor):
+    def send_sensor_infos(self, sensor):
         # Sends all the informations about a sensor to all the devices
         # @param sensor: the actual sensor from which we draw the info (Sensor)
         # @return a ack boolean if the informations of this sensor where successfully delivered to everyone, false otherwise
@@ -203,8 +212,9 @@ class Server:
                 self.send(message, "brd")
                 time.sleep(0.5)
 
-                ack = self.check_ack("sensor_" + str(sensor.id))
+                ack = self.check_ack("sensor_" + str(sensor.id), "sensor")
                 LIMIT += 1
+        
         return ack
 
     def send_robot_info(self): # Sends all the informations about the robot to all the devices
@@ -218,19 +228,48 @@ class Server:
                 message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
                 self.send(message, "brd")
                 
-                ack = self.check_ack("robot")
+                ack = self.check_ack("robot", "sensor")
                 LIMIT +=1
 
-    def check_ack(self, id): 
+    def send_rooms_infos(self):
+        
+        for room_idx in range(len(self.room_edges)):
+            self.ack_rooms[room_idx+1] = [False for i in range(len(self.sensors.keys())+1)]
+            ack = False
+
+            LIMIT = 0
+            while (not ack) and (LIMIT < 10):
+                message = "Room_info," + str(room_idx+1) 
+                message += "," + str(self.room_edges[room_idx][0][0]) 
+                message += "," + str(self.room_edges[room_idx][0][1])
+                message += "," + str(self.room_edges[room_idx][1][0])
+                message += "," + str(self.room_edges[room_idx][1][1])
+                self.send(message, "brd")
+                time.sleep(0.5)
+
+                ack = self.check_ack(room_idx+1, "room")
+                LIMIT += 1
+            
+            if not ack:
+                return False
+        return True
+
+    def check_ack(self, id, type): 
         # Checks that all devices have acknowledged all the informations about the current device 
         # @return True if all devices acked, False otherwise
 
-        for i in range(len(self.sensors.keys())):
-            if not self.ack_devices.get(id)[i]:
-                return False
-            if not self.ack_pos.get(id)[i]:
-                return False
-        return True
+        if type == "sensor":
+            for i in range(len(self.sensors.keys())+1):
+                if not self.ack_devices.get(id)[i]:
+                    return False
+                if not self.ack_pos.get(id)[i]:
+                    return False
+            return True
+        elif type == "room":
+            for i in range(len(self.sensors.keys())+1):
+                if not self.ack_rooms.get(id)[i]:
+                    return False
+            return True
 
 #==========================================================================================================================================
 #============================================================= API FUNCTIONS ==============================================================
@@ -267,3 +306,7 @@ class Server:
         # @param room: the room in which the robot is placed (Integer)
         
         self.robot.update_pos(real_pos[0], real_pos[1], angle, room.room_num)
+
+    def add_edges(self, TLpos, BRpos):
+
+        self.room_edges.append((TLpos, BRpos))
