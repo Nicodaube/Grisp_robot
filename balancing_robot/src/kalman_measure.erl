@@ -49,7 +49,8 @@ get_new_robot_pos(Room) ->
     [{_, _, _, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
     %[{_, _, _, [Angle1]}] = hera_data:get(angle, Sensor1),
     [{_, _, _, [Dist2]}] = hera_data:get(distance, Sensor2),
-    get_pos_2({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2}).
+    {TLx, TLy, BRx, BRy} = get_room_info(OldRoom),
+    get_pos_2({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}).
     %Y = abs(Dist1 * math:sin(Angle1)),% Position relative 
     %X = abs(Dist1 * math:cos(Angle1)),% position relative 
     %get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}).
@@ -82,7 +83,15 @@ get_sensor_pos(SensorName) ->
 
 
 
-get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2}) ->
+get_room_info(OldRoom) ->
+    case hera_data:get(room_info,OldRoom) of
+        [{_, _, _, [TLx, TLy, BRx, BRy]}] ->
+            {TLx, TLy, BRx, BRy}
+        _ ->
+            io:format("[KALMAN_MEASURE] Can't get the pos of room : ~p~n", [SensorName])
+    end.
+
+get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2},{TLx, TLy, BRx, BRy}) ->
     Dx = (X2 - X1) * 100,
     Dy = (Y2 - Y1) * 100,
     D = math:sqrt(Dx*Dx + Dy * Dy),
@@ -103,13 +112,29 @@ get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2}) ->
             Yout1 = Py + Ry,
             Xout2 = Px - Rx,
             Yout2 = Py - Ry,
-
-            {{Xout1/100, Yout1/100}, {Xout2/100, Yout2/100}}
+            
+            {{Xout/100, Yout/100}} = check_good_point(Xout1, Yout1, Xout2, Yout2, TlX, TlY, BRx, BRy)
     end.
 
-
-
-
+check_good_point(Xout1, Yout1, Xout2, Yout2, TlX_str, TlY_str, BRx_str, BRy_str) ->
+    
+    {TlX, _} = string:to_integer(TlX_str),
+    {TlY, _} = string:to_integer(TlY_str),
+    {BRx, _}  = string:to_integer(BRx_str),
+    {BRy, _}  = string:to_integer(BRy_str),
+    MaxRoomX = math:max(TLx,BRx), %jsp si faut diviser par 100 ?
+    MaxRoomy = math:max(TLy,BRy), %jsp si faut diviser par 100 ?
+    case {Xout1 < MaxRoomX, Yout1 < MaxRoomy} of
+        {true, true} ->
+            {ok, Xout1, Yout1};
+        _ ->
+            case {Xout2 < MaxRoomX, Yout2 < MaxRoomy} of
+                {true, true} ->
+                    {ok, Xout2, Yout2};
+                _ ->
+                    none
+            end
+    end.
 
 get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
     if 
