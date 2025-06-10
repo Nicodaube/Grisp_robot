@@ -22,10 +22,11 @@ measure(State) ->
         [{_, _, _, [_, _, OldAngle, OldRoom]}] ->
             Seq = maps:get(seq, State, 1),
             NewState = State#{seq => Seq +1},
-            {X, Y} = get_new_robot_pos(OldRoom),
-            io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[X, Y, OldAngle, OldRoom]),
-            send_robot_pos([X, Y, OldAngle, OldRoom]),
-            {ok, [X, Y, OldAngle, OldRoom], robot_pos, robot, NewState};
+            {{Xout1, Yout1}, {Xout2, Yout2}} = get_new_robot_pos(OldRoom),
+            io:format("[KALMAN_MEASURE] Two position possibilities : ~n~p ~n ~p~n", [{Xout1, Yout1}, {Xout2, Yout2}]),
+            %io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[X, Y, OldAngle, OldRoom]),
+            send_robot_pos([Xout1, Yout1, OldAngle, OldRoom]),
+            {ok, [Xout1, Yout1, OldAngle, OldRoom], robot_pos, robot, NewState};
         _ ->
             io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
             {stop, no_robot_pos}
@@ -81,9 +82,9 @@ get_sensor_pos(SensorName) ->
 
 
 
-get_pos_2({X1,Y1}, {X2,Y2} {Dist1}, {Dist2}) ->
-    Dx = X2 - X1,
-    Dy = Y2 - Y1,
+get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2}) ->
+    Dx = (X2 - X1) * 100,
+    Dy = (Y2 - Y1) * 100,
     D = math:sqrt(Dx*Dx + Dy * Dy),
     case (D > Dist1 + Dist2) orelse (D < abs(Dist1 - Dist2)) orelse (D == 0 andalso Dist1 == Dist2) of
         true ->
@@ -92,8 +93,8 @@ get_pos_2({X1,Y1}, {X2,Y2} {Dist1}, {Dist2}) ->
             A = (Dist1 * Dist1 - Dist2 * Dist2 + D*D) / (2*D),
             H = math:sqrt(Dist1*Dist1 - A*A),
 
-            Px = X1 + A * (Dx/D),
-            Py = Y1 + A * (Dy/D),
+            Px = (X1*100) + A * (Dx/D),
+            Py = (Y1*100) + A * (Dy/D),
 
             Rx = -Dy * (H/D),
             Ry =  Dx * (H/D),
@@ -103,7 +104,7 @@ get_pos_2({X1,Y1}, {X2,Y2} {Dist1}, {Dist2}) ->
             Xout2 = Px - Rx,
             Yout2 = Py - Ry,
 
-            {{Xout1, Yout1}, {Xout2, Yout2}}
+            {{Xout1/100, Yout1/100}, {Xout2/100, Yout2/100}}
     end.
 
 
