@@ -158,11 +158,13 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
 
     MaxRoomX = lists:max([TLx, BRx])*100,
     MaxRoomy = lists:max([TLy, BRy])*100,
-    case {Xout1 < MaxRoomX, Yout1 < MaxRoomy} of
+    MinRoomX = lists:min([TLx, BRx])*100,
+    MinRoomy = lists:min([TLy, BRy])*100,
+    case {MinRoomX =< Xout1 andalso Xout1 =< MaxRoomX, MinRoomy =< Yout1 andalso Yout1 =< MaxRoomy} of
         {true, true} ->
             {Xout1/100, Yout1/100};
         _ ->
-            case {Xout2 < MaxRoomX, Yout2 < MaxRoomy} of
+            case {MinRoomX =< Xout2 andalso Xout2 =< MaxRoomX, MinRoomy =< Yout2 andalso Yout2 =< MaxRoomy} of
                 {true, true} ->
                     {Xout2/100, Yout2/100};
                 _ ->
