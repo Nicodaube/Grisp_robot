@@ -235,7 +235,7 @@ store_room_info(Id, RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
     RoomId = list_to_integer(RoomIdS),
 
     hera_data:store(room_info, RoomId, 1, [TLx, TLy, BRx, BRy]),
-    ack_message("Room_info", RoomId, Id),
+    ack_message("Room_info", RoomIdS, Id),
     loop(Id).    
 
 start_measures(Id) ->

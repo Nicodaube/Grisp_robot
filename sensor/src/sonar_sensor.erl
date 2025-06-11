@@ -166,21 +166,20 @@ get_rand_num() ->
     rand:seed(exsplus, Seed),
     {ok, rand:uniform(3000)}.   
 
-get_phase(TimeClock, Current_time) ->
-    Phase = (Current_time - TimeClock) rem 200,
-    case Phase < 0 of
-        true ->
-            200 - Phase;
-        false ->
-            Phase
-    end.
+get_phase(Start, Now) ->
+    Phase0 = (Now - Start) rem 200,
+    Phase = if
+        Phase0 < 0 -> Phase0 + 200;
+        true      -> Phase0
+    end,
+    Phase.
 
-get_phase(TimeClock, Current_time, Offset) ->
-    Phase = (Current_time + Offset - TimeClock) rem 200,
-    case Phase < 0 of
-        true ->
-            200 - Phase;
-        false ->
-            Phase
-    end.
+get_phase(Start, Now, Offset) ->
+    Phase0 = (Now + Offset - Start) rem 200,
+    Phase = if
+        Phase0 < 0 -> Phase0 + 200;
+        true      -> Phase0
+    end,
+    Phase.
+
 
