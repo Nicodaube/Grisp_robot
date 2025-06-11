@@ -1,7 +1,5 @@
-/balancing_robot/_*
-/toolchain/
-/_build/
 /Laptop_controller/__pycache__
 /Laptop_controller/__pycache__/*
-/Laptop_controller/sensors_data/*
+/Laptop_controller/helping_package/__pycache__
+/Laptop_controller/helping_package/__pycache__/*
 /venv
