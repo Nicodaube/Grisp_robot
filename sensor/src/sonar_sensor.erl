@@ -34,7 +34,7 @@ measure(State) ->
         {slave, TimeClock, Offset} ->
             Phase = get_phase(TimeClock, Current_time, Offset),
             if 
-                Phase >= 100, Phase < 150 ->
+                Phase >= 150, Phase < 200 ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -167,17 +167,17 @@ get_rand_num() ->
     {ok, rand:uniform(3000)}.   
 
 get_phase(Start, Now) ->
-    Phase0 = (Now - Start) rem 200,
+    Phase0 = (Now - Start) rem 300,
     Phase = if
-        Phase0 < 0 -> Phase0 + 200;
+        Phase0 < 0 -> Phase0 + 300;
         true      -> Phase0
     end,
     Phase.
 
 get_phase(Start, Now, Offset) ->
-    Phase0 = (Now + Offset - Start) rem 200,
+    Phase0 = (Now + Offset - Start) rem 300,
     Phase = if
-        Phase0 < 0 -> Phase0 + 200;
+        Phase0 < 0 -> Phase0 + 300;
         true      -> Phase0
     end,
     Phase.
