@@ -4,33 +4,78 @@
 
 -export([init/1, measure/1]).
 
-%============================================================================================================================================
-%======================================================= HERA MEASURE BEHAVIOUR ==============================================================
-%============================================================================================================================================
+
+-define(VAR_S, 0.01). % (0.2/2)^2
+-define(VAR_P, 0.0025). % (0.1/2)^2
+-define(VAR_AL, 0.1).
 
 init(_Args) ->
     timer:sleep(2000),
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
-    {ok, #{seq => 2}, #{
+
+    State = #{
+        t0 => hera:timestamp(),
+        x_pos => mat:zeros(6, 1),
+        p_pos => mat:eye(6),
+        seq => 2
+    },
+
+    {ok, State, #{
         name => kalman_measure,
         iter => infinity,
         timeout => 300
     }}.
-    
+
 measure(State) ->
-    case hera_data:get(robot_pos, robot) of
-        [{_, _, _, [_, _, OldAngle, OldRoom]}] ->
-            Seq = maps:get(seq, State, 1),
-            NewState = State#{seq => Seq +1},
-            {{Xout1, Yout1}, {Xout2, Yout2}} = get_new_robot_pos(OldRoom),
-            io:format("[KALMAN_MEASURE] Two position possibilities : ~n~p ~n ~p~n", [{Xout1, Yout1}, {Xout2, Yout2}]),
-            %io:format("[KALMAN_MEASURE] New robot pos : (~p,~p) at ~p in room number ~p~n",[X, Y, OldAngle, OldRoom]),
-            send_robot_pos([Xout1, Yout1, OldAngle, OldRoom]),
-            {ok, [Xout1, Yout1, OldAngle, OldRoom], robot_pos, robot, NewState};
-        _ ->
-            io:format("[KALMAN_MEASURE] Robot position not initialised~n"),
-            {stop, no_robot_pos}
-    end.
+    #{ 
+        t0   := T0,
+        x_pos := Xpos,
+        p_pos := Ppos,
+        seq  := Seq
+    } = State,
+
+    case hera_data:get(robot_pos, robot) of 
+        [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
+            T1 = hera:timestamp(),
+            case get_new_robot_pos(OldRoom) of
+                no_intersection ->
+                    {undefined, {T0, Xpos, Ppos}};
+                {{Xout, Yout}} ->
+                    Dt = (T1 - T0)/1000,
+                    F = [
+                        [1, Dt, Dt*Dt/2, 0, 0, 0],
+                        [0, 1, Dt,       0, 0, 0],
+                        [0, 0, 1,        0, 0, 0],
+                        [0, 0, 0,        1, Dt, Dt*Dt/2],
+                        [0, 0, 0,        0, 1, Dt],
+                        [0, 0, 0,        0, 0, 1]
+                    ],
+
+                    Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL]),
+                    H = [
+                        [1,0,0,0,0,0], % mesure X
+                        [0,0,0,1,0,0]  % mesure Y
+                    ],
+                    Z = [[Xout],[Yout]],
+                    R = mat:diag([?VAR_S, ?VAR_S]),
+
+                    {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
+                    {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R, Z),
+
+                    [_,_,_,_,_,_] = Xflat = lists:append(Xnew),
+
+                    NewState = #{ 
+                        t0   => T1,
+                        x_pos => Xnew,
+                        p_pos => Pnew,
+                        seq  => Seq +1
+                    },
+                    io:format("[KALMAN_MEASURE] New pos is : ~p~n", [Xnew]),
+                    send_robot_pos(Xnew),
+
+                    {ok, [lists:nth(1, Xflat), lists:nth(4, Xflat)], robot, NewState}
+            end
+    end.               
 
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
@@ -47,13 +92,9 @@ get_new_robot_pos(Room) ->
     {X1, Y1, _} = get_sensor_pos(Sensor1),
     {X2, Y2, _} = get_sensor_pos(Sensor2),
     [{_, _, _, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
-    %[{_, _, _, [Angle1]}] = hera_data:get(angle, Sensor1),
     [{_, _, _, [Dist2]}] = hera_data:get(distance, Sensor2),
-    {TLx, TLy, BRx, BRy} = get_room_info(OldRoom),
-    get_pos_2({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}).
-    %Y = abs(Dist1 * math:sin(Angle1)),% Position relative 
-    %X = abs(Dist1 * math:cos(Angle1)),% position relative 
-    %get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}).
+    {TLx, TLy, BRx, BRy} = get_room_info(Room),
+    get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}).
     
 get_room_sensors(Room) ->
     Devices = persistent_term:get(devices),
@@ -81,17 +122,15 @@ get_sensor_pos(SensorName) ->
             io:format("[KALMAN_MEASURE] Can't get the pos of sensor : ~p~n", [SensorName])
     end.
 
-
-
 get_room_info(OldRoom) ->
     case hera_data:get(room_info,OldRoom) of
         [{_, _, _, [TLx, TLy, BRx, BRy]}] ->
-            {TLx, TLy, BRx, BRy}
+            {TLx, TLy, BRx, BRy};
         _ ->
-            io:format("[KALMAN_MEASURE] Can't get the pos of room : ~p~n", [SensorName])
+            io:format("[KALMAN_MEASURE] Can't get the pos of room n°~p~n", [OldRoom])
     end.
 
-get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2},{TLx, TLy, BRx, BRy}) ->
+get_pos({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2},{TLx, TLy, BRx, BRy}) ->
     Dx = (X2 - X1) * 100,
     Dy = (Y2 - Y1) * 100,
     D = math:sqrt(Dx*Dx + Dy * Dy),
@@ -112,14 +151,13 @@ get_pos_2({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2},{TLx, TLy, BRx, BRy}) ->
             Yout1 = Py + Ry,
             Xout2 = Px - Rx,
             Yout2 = Py - Ry,
-            
-            {{Xout/100, Yout/100}} = check_good_point(Xout1, Yout1, Xout2, Yout2, TlX, TlY, BRx, BRy)
+            check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy)
     end.
 
 check_good_point(Xout1, Yout1, Xout2, Yout2, TlX_str, TlY_str, BRx_str, BRy_str) ->
     
-    {TlX, _} = string:to_integer(TlX_str),
-    {TlY, _} = string:to_integer(TlY_str),
+    {TLx, _} = string:to_integer(TlX_str),
+    {TLy, _} = string:to_integer(TlY_str),
     {BRx, _}  = string:to_integer(BRx_str),
     {BRy, _}  = string:to_integer(BRy_str),
     MaxRoomX = math:max(TLx,BRx), %jsp si faut diviser par 100 ?
@@ -132,44 +170,7 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TlX_str, TlY_str, BRx_str, BRy_str)
                 {true, true} ->
                     {ok, Xout2, Yout2};
                 _ ->
-                    none
+                    no_intersection
             end
     end.
 
-get_pos({X1, Y1, A1}, {X2, Y2}, {X, Y}) ->
-    if 
-        Y1 > Y2 ->
-            NewY = Y1 - Y;
-        Y1 < Y2 ->
-            NewY = Y1 + Y;
-        Y1 == Y2 ->
-            if 
-                A1 == 45 ->
-                    NewY = Y1 + Y;
-                A1 == 135 ->
-                    NewY = Y1 + Y;
-                A1 == 225 ->
-                    NewY = Y1 - Y;
-                A1 == 315 ->
-                    NewY = Y1 - Y
-            end
-    end,
-
-    if 
-        X1 > X2 ->
-            NewX = X1 - X;
-        X1 < X2 ->
-            NewX = X1 + X;
-        X1 == X ->
-            if
-                A1 == 45 ->
-                    NewX = X1 + X;
-                A1 == 135 ->
-                    NewX = X1 - X;
-                A1 == 225 ->
-                    NewX = X1 - X;
-                A1 == 315 ->
-                    NewX = X1 + X
-            end
-    end,
-    {abs(NewX)/100, abs(NewY)/100}.
