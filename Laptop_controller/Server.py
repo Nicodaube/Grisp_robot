@@ -131,6 +131,9 @@ class Server:
         elif type == "uni":
             threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
 
+        if message == "Exit":
+            self.csv_saver.print_plots()
+
     def brd_server(self, message):
         # Sends a broadcast message
         # @param message: the message to be sent (String)
