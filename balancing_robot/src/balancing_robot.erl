@@ -184,14 +184,19 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     %io:format("[ROBOT] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
     loop().
 
-store_room_info(RoomId, TLx, TLy, BRx, BRy) ->
+store_room_info(RoomId, TLxS, TLyS, BRxS, BRyS) ->
     % Store the dimension of a room
     % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param RoomId : Room concerned (String)
-    % @param TLx : Top left X corner position (String)
-    % @param TLy : Top left Y corner position (String)
-    % @param BRx : Bottom right X corner position (String)
-    % @param BRy : Bottom right Y corner position (String)
+    % @param TLxS : Top left X corner position (String)
+    % @param TLyS : Top left Y corner position (String)
+    % @param BRxS : Bottom right X corner position (String)
+    % @param BRyS : Bottom right Y corner position (String)
+    TLx = list_to_float(TLxS),
+    TLy = list_to_float(TLyS),
+    BRx = list_to_float(BRxS),
+    BRy = list_to_float(BRyS),
+
     hera_data:store(room_info, RoomId, 1, [TLx, TLy, BRx, BRy]),
     ack_message("Room_info", RoomId),
     loop(). 
