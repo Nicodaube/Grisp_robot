@@ -35,34 +35,33 @@ measure(State) ->
     } = State,
 
     case hera_data:get(robot_pos, robot) of 
-        [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
+        [{_, _, _, [_OldX,_OldY, OldAngle, OldRoom]}] ->
             T1 = hera:timestamp(),
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
                     {undefined, {T0, Xpos, Ppos}};
-                {{Xout, Yout}} ->
+                {Xout, Yout} ->
                     Dt = (T1 - T0)/1000,
-                    F = [
+                    F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
                         [0, 1, Dt,       0, 0, 0],
                         [0, 0, 1,        0, 0, 0],
                         [0, 0, 0,        1, Dt, Dt*Dt/2],
                         [0, 0, 0,        0, 1, Dt],
                         [0, 0, 0,        0, 0, 1]
-                    ],
+                    ]),
 
                     Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL]),
-                    H = [
+                    H = mat:matrix([
                         [1,0,0,0,0,0], % mesure X
                         [0,0,0,1,0,0]  % mesure Y
-                    ],
-                    Z = [[Xout],[Yout]],
+                    ]),
+                    Z = mat:matrix([[Xout],[Yout]]),
                     R = mat:diag([?VAR_S, ?VAR_S]),
 
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
                     {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R, Z),
-
-                    [_,_,_,_,_,_] = Xflat = lists:append(Xnew),
+                    Xarray = mat:to_array(Xnew),
 
                     NewState = #{ 
                         t0   => T1,
@@ -70,10 +69,11 @@ measure(State) ->
                         p_pos => Pnew,
                         seq  => Seq +1
                     },
-                    io:format("[KALMAN_MEASURE] New pos is : ~p~n", [Xnew]),
-                    send_robot_pos(Xnew),
+                    
+                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
 
-                    {ok, [lists:nth(1, Xflat), lists:nth(4, Xflat)], robot, NewState}
+                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState}
             end
     end.               
 
@@ -154,21 +154,17 @@ get_pos({X1,Y1}, {X2,Y2}, {Dist1}, {Dist2},{TLx, TLy, BRx, BRy}) ->
             check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy)
     end.
 
-check_good_point(Xout1, Yout1, Xout2, Yout2, TlX_str, TlY_str, BRx_str, BRy_str) ->
-    
-    {TLx, _} = string:to_integer(TlX_str),
-    {TLy, _} = string:to_integer(TlY_str),
-    {BRx, _}  = string:to_integer(BRx_str),
-    {BRy, _}  = string:to_integer(BRy_str),
-    MaxRoomX = math:max(TLx,BRx), %jsp si faut diviser par 100 ?
-    MaxRoomy = math:max(TLy,BRy), %jsp si faut diviser par 100 ?
+check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
+
+    MaxRoomX = lists:max([TLx, BRx])*100,
+    MaxRoomy = lists:max([TLy, BRy])*100,
     case {Xout1 < MaxRoomX, Yout1 < MaxRoomy} of
         {true, true} ->
-            {ok, Xout1, Yout1};
+            {Xout1/100, Yout1/100};
         _ ->
             case {Xout2 < MaxRoomX, Yout2 < MaxRoomy} of
                 {true, true} ->
-                    {ok, Xout2, Yout2};
+                    {Xout2/100, Yout2/100};
                 _ ->
                     no_intersection
             end

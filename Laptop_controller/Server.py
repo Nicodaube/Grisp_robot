@@ -234,12 +234,12 @@ class Server:
     def send_rooms_infos(self):
         
         for room_idx in range(len(self.room_edges)):
-            self.ack_rooms[room_idx+1] = [False for i in range(len(self.sensors.keys())+1)]
+            self.ack_rooms[room_idx] = [False for i in range(len(self.sensors.keys())+1)]
             ack = False
 
             LIMIT = 0
             while (not ack) and (LIMIT < 10):
-                message = "Room_info," + str(room_idx+1) 
+                message = "Room_info," + str(room_idx) 
                 message += "," + str(self.room_edges[room_idx][0][0]) 
                 message += "," + str(self.room_edges[room_idx][0][1])
                 message += "," + str(self.room_edges[room_idx][1][0])
@@ -247,7 +247,7 @@ class Server:
                 self.send(message, "brd")
                 time.sleep(0.5)
 
-                ack = self.check_ack(room_idx+1, "room")
+                ack = self.check_ack(room_idx, "room")
                 LIMIT += 1
             
             if not ack:
