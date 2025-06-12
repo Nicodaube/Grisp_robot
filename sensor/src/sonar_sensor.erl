@@ -3,6 +3,8 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
+-define(MEASURE_ACCEPTABLE_RANGE, 10).
+-define(TIMESLOT_SIZE, 300).
 -export([init/1, measure/1]).
 
 %============================================================================================================================================
@@ -12,8 +14,11 @@
 init(_Args) ->
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     get_sensor_role(),
-    Init_seq = get_init_seq(),
-    {ok, #{seq => Init_seq}, #{
+    State = #{
+        seq => get_init_seq(),
+        last_measure => none
+    },
+    {ok, State, #{
         name => sonar_sensor,
         iter => infinity,
         timeout => 20
@@ -34,7 +39,7 @@ measure(State) ->
         {slave, TimeClock, Offset} ->
             Phase = get_phase(TimeClock, Current_time, Offset),
             if 
-                Phase >= 150, Phase < 200 ->
+                Phase >= (?TIMESLOT_SIZE/2), Phase < (?TIMESLOT_SIZE/2)+50 ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -118,34 +123,59 @@ get_measure(State, SensorName) ->
     D = round(Dist_cm, 4),    
     %io:format("[SONAR_SENSOR] Sonar measure ~p : ~p~n", [Seq, D]),
 
-    get_ground_distance(State, SensorName, D).
+    case get_ground_distance(SensorName, D) of
+        {ok, Ground_measure} ->
+            check_measure_range(Ground_measure, State, SensorName);
+        {stop, cannot_get_height} ->
+            {stop, cannot_get_height}
+    end.
 
-get_ground_distance(State, SensorName, D) ->
+get_ground_distance(SensorName, D) ->
     % Uses the basic pythagorian formula to transform the distance based on the sensor's height
     % @param State : the internal state of the module (tuple)
     % @param SensorName : the name of the current sensor (atom)
     % @param D : Sonar measure in cm (integer)
 
-    Seq = maps:get(seq, State, 1),
     case hera_data:get(pos, SensorName) of
         [{_, _, _, [_ , _, H, _]}] ->
 
             if
                 H > ?ROBOT_HEIGHT ->
-                    True_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100)-?ROBOT_HEIGHT, 2)), 3); % Taking the height of the sonar into account
+                    Ground_measure = round(math:sqrt(math:pow(D, 2) - math:pow((H*100)-?ROBOT_HEIGHT, 2)), 3); % Taking the height of the sonar into account
                 true ->
-                    True_measure = round(D, 3) % The robot is bigger than the sensor's height, no need for correction
-            end,
-    
-            %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
-            hera_com:send_unicast(server, "Distance,"++float_to_list(True_measure)++","++atom_to_list(SensorName), "UTF8"),
-    
-            hera_data:store(distance, SensorName, Seq, [True_measure]),
-            NewState = State#{seq => Seq + 1},
-            {ok, [True_measure], distance, SensorName, NewState};
+                    Ground_measure = round(D, 3) % The robot is bigger than the sensor's height, no need for correction
+            end,           
+
+            {ok, Ground_measure};
         Msg ->
             io:format("[SONAR_SENSOR] Cannot get sensor height : ~p~n",[Msg]),
             {stop, cannot_get_height}
+    end.
+
+    check_measure_range(Ground_measure, State, SensorName) ->
+        % Smoothes the measure (filters bad measures due to interferences)
+        % @param Ground_measure : measure in cm (Integer)
+        % @param State : the internal state of the module (tuple)
+        % @param SensorName : the name of the current sensor (atom)
+        #{
+            seq := Seq,
+            last_measure := Last_measure
+        } = State,
+
+        if
+            Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE -> 
+                %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
+                hera_com:send_unicast(server, "Distance,"++float_to_list(Ground_measure)++","++atom_to_list(SensorName), "UTF8"),
+        
+                hera_data:store(distance, SensorName, Seq, [Ground_measure]),
+                NewState = #{
+                    seq => Seq + 1,
+                    last_measure => Ground_measure
+                },
+                {ok, [Ground_measure], distance, SensorName, NewState};
+            true ->
+                io:format("[SONAR_SENSOR] ground distance exceeds the acceptable range by ~p~n", [abs(Last_measure - Ground_measure) - ?MEASURE_ACCEPTABLE_RANGE]),
+                {undefined, State}
     end.
 
 %============================================================================================================================================
@@ -167,17 +197,17 @@ get_rand_num() ->
     {ok, rand:uniform(3000)}.   
 
 get_phase(Start, Now) ->
-    Phase0 = (Now - Start) rem 300,
+    Phase0 = (Now - Start) rem ?TIMESLOT_SIZE,
     Phase = if
-        Phase0 < 0 -> Phase0 + 300;
+        Phase0 < 0 -> Phase0 + ?TIMESLOT_SIZE;
         true      -> Phase0
     end,
     Phase.
 
 get_phase(Start, Now, Offset) ->
-    Phase0 = (Now + Offset - Start) rem 300,
+    Phase0 = (Now + Offset - Start) rem ?TIMESLOT_SIZE,
     Phase = if
-        Phase0 < 0 -> Phase0 + 300;
+        Phase0 < 0 -> Phase0 + ?TIMESLOT_SIZE;
         true      -> Phase0
     end,
     Phase.

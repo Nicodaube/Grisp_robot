@@ -83,6 +83,7 @@ class CSV_saver:
         ax1.set_title('Variation of sonar measure in sensor_1 over time')
         ax1.set_xlabel('Measure idx')
         ax1.set_ylabel('Distance')
+        ax1.set_ylim([0,200])
         ax1.legend()
         ax1.grid(True)
 
@@ -94,7 +95,8 @@ class CSV_saver:
         ax2.set_title('Variation of sonar measure in sensor_2 over time')
         ax2.set_xlabel('Measure idx')
         ax2.set_ylabel('Distance')
+        ax2.set_ylim([0,200])
         ax2.legend()
         ax2.grid(True)
 
-        plt.savefig('../plots/dist_kalman_' + self.timestamp + '.png')
+        plt.savefig('./plots/dist_kalman_' + self.timestamp + '.png')
