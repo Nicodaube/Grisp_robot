@@ -65,38 +65,41 @@ class CSV_saver:
         self.create_dist_plots()
     
     def create_dist_plots(self, expected_dist1=None, expected_dist2 = None):
-        dist_data = pd.read_csv("./data/sonar_dist_sensor_1_" + self.timestamp + ".csv", header=None, names=["idx", "dist"])
-        x1 = dist_data['idx']          
-        y11 = dist_data['dist'].astype(float).round(3)        
+        try:
+            dist_data = pd.read_csv("./data/sonar_dist_sensor_1_" + self.timestamp + ".csv", header=None, names=["idx", "dist"])
+            x1 = dist_data['idx']          
+            y11 = dist_data['dist'].astype(float).round(3)        
 
-        dist_data2 = pd.read_csv("./data/sonar_dist_sensor_2_" + self.timestamp + ".csv", header=None, names=["idx", "dist"])
-        x2 = dist_data2['idx']
-        y12 = dist_data2['dist'].astype(float).round(3)        
+            dist_data2 = pd.read_csv("./data/sonar_dist_sensor_2_" + self.timestamp + ".csv", header=None, names=["idx", "dist"])
+            x2 = dist_data2['idx']
+            y12 = dist_data2['dist'].astype(float).round(3)        
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 10), constrained_layout=True)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 10), constrained_layout=True)
 
-        ax1.plot(x1, y11, label='Measured distance', linewidth=2, marker='o')
-        if expected_dist1 != None :
-            y21 = [78 for i in x1]
-            ax1.plot(x1, y21, label='True distance', linewidth=2, marker='s')
+            ax1.plot(x1, y11, label='Measured distance', linewidth=2, marker='o')
+            if expected_dist1 != None :
+                y21 = [78 for i in x1]
+                ax1.plot(x1, y21, label='True distance', linewidth=2, marker='s')
 
-        ax1.set_title('Variation of sonar measure in sensor_1 over time')
-        ax1.set_xlabel('Measure idx')
-        ax1.set_ylabel('Distance')
-        ax1.set_ylim([0,200])
-        ax1.legend()
-        ax1.grid(True)
+            ax1.set_title('Variation of sonar measure in sensor_1 over time')
+            ax1.set_xlabel('Measure idx')
+            ax1.set_ylabel('Distance')
+            ax1.set_ylim([0,200])
+            ax1.legend()
+            ax1.grid(True)
 
-        ax2.plot(x2, y12, label='Measured distance', linewidth=2, marker='o')
-        if expected_dist2 != None:
-            y22 = [80 for i in x2]
-            ax2.plot(x2, y22, label='True distance', linewidth=2, marker='s')
-            
-        ax2.set_title('Variation of sonar measure in sensor_2 over time')
-        ax2.set_xlabel('Measure idx')
-        ax2.set_ylabel('Distance')
-        ax2.set_ylim([0,200])
-        ax2.legend()
-        ax2.grid(True)
+            ax2.plot(x2, y12, label='Measured distance', linewidth=2, marker='o')
+            if expected_dist2 != None:
+                y22 = [80 for i in x2]
+                ax2.plot(x2, y22, label='True distance', linewidth=2, marker='s')
+                
+            ax2.set_title('Variation of sonar measure in sensor_2 over time')
+            ax2.set_xlabel('Measure idx')
+            ax2.set_ylabel('Distance')
+            ax2.set_ylim([0,200])
+            ax2.legend()
+            ax2.grid(True)
 
-        plt.savefig('./plots/dist_kalman_' + self.timestamp + '.png')
+            plt.savefig('./plots/dist_kalman_' + self.timestamp + '.png')
+        except:
+            print("[CSV_SAVER] Files not initialized")
