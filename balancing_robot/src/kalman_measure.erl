@@ -39,7 +39,32 @@ measure(State) ->
             T1 = hera:timestamp(),
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
-                    {undefined, {T0, Xpos, Ppos}};
+                    correction = 1,
+                    Dt = (T1 - T0)/1000,
+                    F = mat:matrix([
+                        [1, Dt, Dt*Dt/2, 0, 0, 0],
+                        [0, 1, Dt,       0, 0, 0],
+                        [0, 0, 1,        0, 0, 0],
+                        [0, 0, 0,        1, Dt, Dt*Dt/2],
+                        [0, 0, 0,        0, 1, Dt],
+                        [0, 0, 0,        0, 0, 1]
+                    ]),
+
+                    Q = mat:diag([?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction, ?VAR_P*correction, ?VAR_P*correction, ?VAR_A*correctionL]),
+                    {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
+                    Xarray = mat:to_array(Xpred),
+                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    
+                    NewState = #{ 
+                        t0   => T1,
+                        x_pos => Xpred,
+                        p_pos => Ppred,
+                        seq  => Seq +1
+                    },
+                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState}
+                    
+                    {undefined, {State}};
                 {Xout, Yout} ->
                     Dt = (T1 - T0)/1000,
                     F = mat:matrix([
