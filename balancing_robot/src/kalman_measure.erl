@@ -39,7 +39,7 @@ measure(State) ->
             T1 = hera:timestamp(),
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
-                    correction = 1
+                    correction = 1,
                     Dt = (T1 - T0)/1000,
                     F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
