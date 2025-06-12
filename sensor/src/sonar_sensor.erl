@@ -3,8 +3,10 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(MEASURE_ACCEPTABLE_RANGE, 10).
+-define(MEASURE_ACCEPTABLE_RANGE, 15).
 -define(TIMESLOT_SIZE, 300).
+-define(MIN_MEASURE_PERIOD, ?TIMESLOT_SIZE).
+
 -export([init/1, measure/1]).
 
 %============================================================================================================================================
@@ -16,7 +18,8 @@ init(_Args) ->
     get_sensor_role(),
     State = #{
         seq => get_init_seq(),
-        last_measure => none
+        last_measure => none,
+        timestamp => none
     },
     {ok, State, #{
         name => sonar_sensor,
@@ -159,18 +162,22 @@ get_ground_distance(SensorName, D) ->
         % @param SensorName : the name of the current sensor (atom)
         #{
             seq := Seq,
-            last_measure := Last_measure
+            last_measure := Last_measure,
+            timestamp := Timestamp
         } = State,
 
+        Current_timestamp = hera:timestamp(),
         if
-            Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE -> 
+            Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE orelse Timestamp - Current_timestamp > ?MIN_MEASURE_PERIOD -> 
+                % Only keep the measure if it is within MEASURE_ACCEPTABLE_RANGE of the last measure or if there was no measure for MIN_MEASURE_PERIOD
                 %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
                 hera_com:send_unicast(server, "Distance,"++float_to_list(Ground_measure)++","++atom_to_list(SensorName), "UTF8"),
         
                 hera_data:store(distance, SensorName, Seq, [Ground_measure]),
                 NewState = #{
                     seq => Seq + 1,
-                    last_measure => Ground_measure
+                    last_measure => Ground_measure,
+                    timestamp => Current_timestamp
                 },
                 {ok, [Ground_measure], distance, SensorName, NewState};
             true ->

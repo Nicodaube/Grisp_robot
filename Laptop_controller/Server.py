@@ -125,14 +125,15 @@ class Server:
         # @param message: the message to be sent (String)
         # @param type: the way the message has to be sent, can be "brd" for broadcast and "uni" for unicast (String)
         # @param id: the identifier of the device to update (String, Integer, None)
+        if message == "Exit":
+            self.csv_saver.print_plots()
 
         if type == "brd":
             threading.Thread(target=self.brd_server, args=(message,), daemon=True).start()
         elif type == "uni":
             threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
 
-        if message == "Exit":
-            self.csv_saver.print_plots()
+        
 
     def brd_server(self, message):
         # Sends a broadcast message

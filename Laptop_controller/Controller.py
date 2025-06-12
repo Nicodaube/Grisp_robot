@@ -141,6 +141,7 @@ class User_interface:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.server.send("Exit", "brd")
+                time.sleep(0.25)
                 self.running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
