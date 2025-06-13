@@ -51,7 +51,9 @@ class Server:
                     if data_split[0] == "Hello": # Received from a device when it has discovered the sever
                         self.handle_hello(data_split, addr)                        
                     elif data_split[0] == "Robot_pos": # Received from devices at each iteration of the kalman measure (only saves robot update)
-                        self.update_robot_pos(data, addr)                        
+                        self.update_robot_pos_kalman(data, addr)   
+                    elif data_split[0] == "Robot_sonar_pos": # Received from devices at each iteration of the kalman measure (only saves robot update)
+                        self.update_robot_pos_sonar(data, addr)  
                     elif data_split[0] == "Ack": # Received from devices after each configuration message
                         self.handle_ack(data)   
                     elif data_split[0] == "Distance":
@@ -81,7 +83,7 @@ class Server:
             print("[SERVER] Received hello from sensor_" + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
             self.send("Ack , server", "uni", id)
 
-    def update_robot_pos(self, data, addr):
+    def update_robot_pos_sonar(self, data, addr):
         # Updates the robot position based on the message received
         # @param data : the decoded data received (String)
         # @param addr : the Ip address and Port associated with the received message (List)
@@ -89,6 +91,15 @@ class Server:
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
             self.csv_saver.save_robot_pos_sonar(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
+
+    def update_robot_pos_kalman(self, data, addr):
+        # Updates the robot position based on the message received
+        # @param data : the decoded data received (String)
+        # @param addr : the Ip address and Port associated with the received message (List)
+
+        data_split = data.strip().split(",")
+        if addr[0] == self.robot.ip:
+            self.csv_saver.save_robot_pos_kalman(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
             self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
 
     def handle_ack(self, data):

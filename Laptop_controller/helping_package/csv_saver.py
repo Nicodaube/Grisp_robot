@@ -9,10 +9,12 @@ import numpy as np
 
 class CSV_saver:
     def __init__(self):
+        plt.switch_backend('Agg')
         date = datetime.datetime.now()
         self.sonar_pos_idx = 0
         self.sonar_dist_idx = 0
         self.sonar_freq_idx = 0
+        self.kalman_pos_idx = 0
         self.timestamp = str(date.year) + "_" + str(date.month) + "_" + str(date.day) + "_" + str(date.hour) + "_" + str(date.minute)
 
     def save_robot_pos_sonar(self, x, y, angle, room):
@@ -32,6 +34,24 @@ class CSV_saver:
             
             csv_writer.writerow(row)
             self.sonar_pos_idx += 1
+
+    def save_robot_pos_kalman(self, x, y, angle, room):
+        threading.Thread(target=self.csv_update_pos_kalman, args=(x,y,angle,room), daemon=True).start()
+
+    def csv_update_pos_kalman(self, x, y, angle, room):
+        with open("./data/kalman_pos_" + self.timestamp + ".csv", "a") as csv_file:
+            fieldnames = ["idx", "x", "y", "angle", "room"]
+            csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            row = {
+                "idx": self.kalman_pos_idx,
+                "x": x,
+                "y": y,
+                "angle": angle,
+                "room": room
+                }
+            
+            csv_writer.writerow(row)
+            self.kalman_pos_idx += 1
     
     def save_distance_sonar(self, name, distance):
         threading.Thread(target=self.csv_update_distance_sonar, args=(name, distance), daemon=True).start()
@@ -62,9 +82,11 @@ class CSV_saver:
             self.sonar_freq_idx += 1
         
     def print_plots(self):
+
         try : 
             self.create_dist_plots()
-            self.create_pos_plots()
+            self.create_pos_kalman_plots()
+            self.create_pos_sonar_plots()
         except:
             print("[CSV_SAVER] Files not initialized")
     
@@ -105,8 +127,8 @@ class CSV_saver:
 
         plt.savefig('./plots/dist_kalman_' + self.timestamp + '.png')
 
-    def create_pos_plots(self):
-        pos_data = pd.read_csv("./data/sonar_pos_" + self.timestamp + ".csv", header=None, names=["idx", "x", "y", "angle", "room"])
+    def create_pos_kalman_plots(self):
+        pos_data = pd.read_csv("./data/kalman_pos_" + self.timestamp + ".csv", header=None, names=["idx", "x", "y", "angle", "room"])
         x = pos_data['idx']          
         x_pos = pos_data['x'].astype(float)
             
@@ -129,3 +151,28 @@ class CSV_saver:
         ax2.grid(True)
 
         plt.savefig('./plots/pos_kalman_' + self.timestamp + '.png')
+
+    def create_pos_sonar_plots(self):
+        pos_data = pd.read_csv("./data/sonar_pos_" + self.timestamp + ".csv", header=None, names=["idx", "x", "y", "angle", "room"])
+        x = pos_data['idx']          
+        x_pos = pos_data['x'].astype(float)
+            
+        y_pos = pos_data['y'].astype(float)
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 10), constrained_layout=True)
+
+        ax1.plot(x, x_pos, label='Position on x_axis', linewidth=2, marker='.')
+        ax1.set_title('Variation of the position of the robot over time')
+        ax1.set_ylabel('Position x axis')
+        ax1.set_ylim([0,1])
+        ax1.legend()
+        ax1.grid(True)
+
+        ax2.plot(x, y_pos, label='Position on y_axis', linewidth=2, marker='.')
+        ax2.set_xlabel('Measure idx')
+        ax2.set_ylabel('Position Y axis')
+        ax2.set_ylim([0,1])
+        ax2.legend()
+        ax2.grid(True)
+
+        plt.savefig('./plots/pos_sonar_' + self.timestamp + '.png')
