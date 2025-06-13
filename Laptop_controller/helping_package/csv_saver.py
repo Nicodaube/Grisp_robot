@@ -152,8 +152,8 @@ class CSV_saver:
         plt.savefig('./plots/pos_kalman_' + self.timestamp + '.png')
 
     def create_pos_sonar_plots(self):
-        pos_data = pd.read_csv("./data/sonar_pos_" + self.timestamp + ".csv", header=None, names=["idx", "x", "y", "angle", "room"])
-        x = pos_data['idx']          
+        pos_data = pd.read_csv("./data/sonar_pos_" + self.timestamp + ".csv", header=None, names=["timestamp", "x", "y", "angle", "room"])
+        x = pos_data['timestamp']          
         x_pos = pos_data['x'].astype(float)
             
         y_pos = pos_data['y'].astype(float)
@@ -168,7 +168,7 @@ class CSV_saver:
         ax1.grid(True)
 
         ax2.plot(x, y_pos, label='Position on y_axis', linewidth=2, marker='.')
-        ax2.set_xlabel('Measure idx')
+        ax2.set_xlabel('Time')
         ax2.set_ylabel('Position Y axis')
         ax2.set_ylim([0,1])
         ax2.legend()
