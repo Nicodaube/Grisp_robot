@@ -5,9 +5,9 @@
 -export([init/1, measure/1]).
 
 
--define(VAR_S, 0.01). % (0.2/2)^2
--define(VAR_P, 0.0025). % (0.1/2)^2
--define(VAR_AL, 0.1).
+-define(VAR_S, 0.01). % Plus haut, plus il y a du bruit dans la mesure
+-define(VAR_P, 0.0025). % Plus il est grand, moins on a confiance en kalman
+-define(VAR_AL, 0.05). % Plus il est grand, plus l'accélération du robot peut etre grande
 
 init(_Args) ->
     timer:sleep(2000),
@@ -39,7 +39,7 @@ measure(State) ->
             T1 = hera:timestamp(),
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
-                    correction = 1,
+                    Correction = 1,
                     Dt = (T1 - T0)/1000,
                     F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
@@ -50,7 +50,7 @@ measure(State) ->
                         [0, 0, 0,        0, 0, 1]
                     ]),
 
-                    Q = mat:diag([?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction, ?VAR_P*correction, ?VAR_P*correction, ?VAR_A*correctionL]),
+                    Q = mat:diag([?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction]),
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
                     Xarray = mat:to_array(Xpred),
                     hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
@@ -62,9 +62,7 @@ measure(State) ->
                         p_pos => Ppred,
                         seq  => Seq +1
                     },
-                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState}
-                    
-                    {undefined, {State}};
+                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState};
                 {Xout, Yout} ->
                     Dt = (T1 - T0)/1000,
                     F = mat:matrix([
@@ -83,6 +81,7 @@ measure(State) ->
                     ]),
                     Z = mat:matrix([[Xout],[Yout]]),
                     R = mat:diag([?VAR_S, ?VAR_S]),
+                    send_robot_sonar_pos([Xout, Yout, OldAngle, OldRoom]),
 
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
                     {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R, Z),
@@ -97,6 +96,7 @@ measure(State) ->
                     
                     hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
                     send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    
 
                     {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState}
             end
@@ -109,6 +109,11 @@ measure(State) ->
 send_robot_pos(Pos) ->
     Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
     Msg = "Robot_pos," ++ Pos_string,
+    hera_com:send_unicast(server, Msg, "UTF8").
+
+send_robot_sonar_pos(Pos) ->
+    Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
+    Msg = "Robot_sonar_pos," ++ Pos_string,
     hera_com:send_unicast(server, Msg, "UTF8").
             
 get_new_robot_pos(Room) ->
