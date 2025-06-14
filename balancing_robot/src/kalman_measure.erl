@@ -148,7 +148,9 @@ measure(State) ->
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
 
                     [_, _, [Axlin], _, _, [Aylin]] = Xpred,
-                    AccLin2 = [[Axlin, Aylin, 0.0]],
+                    AccLin2 = mat:matrix(
+                        [[Axlin, Aylin, 0.0]
+                    ]),
 
                     [{Xor1,Por1}] = kalman_orientation(Acc ,AccLin2 ,Gyro ,Mag ,R0 ,R ,T1 ,T0 ,Xor ,Por),
 
@@ -362,14 +364,16 @@ get_val_nav(R) ->
     Gyro = scale([Gx-GBx,Gy-GBy,-(Gz-GBz)],math:pi()/180),
 
     {MBx,MBy,MBz} = persistent_term:get(mag_init),
-    Mag = [-(Mx-MBx),My-MBy,-(Mz-MBz)],
+    Mag = mat:matrix(
+        [-(Mx-MBx),My-MBy,-(Mz-MBz)]
+    ),
 
     AccRot = mat:'*'(mat:matrix([Acc]), mat:tr(R)),  % rotation dans le repère monde
-    RotAcc = mat:'-'(AccRot, mat:matrix([[0, 0, -9.81]])),  % compensation gravité
+    RotAcc = mat:'-'(mat:matrix([AccRot]), mat:matrix([[0, 0, -9.81]])),  % compensation gravité
 
     R0 = ahrs([Ax,Ay,-Az], [-(Mx-MBx),My-MBy,-(Mz-MBz)]),
     mat:tr(R0),
-    {Acc, RotAcc, Gyro, Mag,R0}. 
+    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
 
 
 quat_to_yaw([[Q0], [Q1], [Q2], [Q3]]) ->
@@ -397,12 +401,12 @@ kalman_orientation(Acc, AccLin2, Gyro, Mag, R0,Orientation,T1,T0,Xor,Por) ->
     Dtor = (T1-T0)/1000, 
     [Wx,Wy,Wz] = Gyro,
 
-    Omega = [
+    Omega = mat:matrix([
         [0,Wx,Wy,Wz],
         [-Wx,0,-Wz,Wy],
         [-Wy,Wz,0,-Wx],
         [-Wz,-Wy,Wx,0]
-    ],
+    ]),
 
     For = mat:'+'(mat:eye(4), mat:'*'(0.5*Dtor, Omega)),
     Qor = mat:diag([?VAR_Q,?VAR_Q,?VAR_Q,?VAR_Q]),
