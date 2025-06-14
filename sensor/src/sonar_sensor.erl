@@ -3,9 +3,9 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(MEASURE_ACCEPTABLE_RANGE, 15).
--define(TIMESLOT_SIZE, 300).
--define(MIN_MEASURE_PERIOD, ?TIMESLOT_SIZE).
+-define(MEASURE_ACCEPTABLE_RANGE, 50).
+-define(TIMESLOT_SIZE, 200).
+-define(MIN_MEASURE_PERIOD, ?TIMESLOT_SIZE/2).
 
 -export([init/1, measure/1]).
 
