@@ -40,7 +40,7 @@ measure(State) ->
         x_pos := Xpos,
         p_pos := Ppos,
         x_or := Xor,
-        p_or := _Por,
+        p_or := Por,
         yaw := Yaw,
         seq  := Seq
         
@@ -51,29 +51,14 @@ measure(State) ->
             T1 = hera:timestamp(),
             % Faire un process nav
             R = q2dcm(Xor),
-            {Acc,Acclin,Gyro,Mag,R0} = get_val_nav(R),
+            {Acc, _Acclin, Gyro, Mag, R0} = get_val_nav(R),
             
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
-                    correction = 1, %%sert à changer les variables de la matrice Q au plus on l'augmente au plus il est dit qu'on ne fait pas confiance à la matrice Q.
+                    Correction = 1, %%sert à changer les variables de la matrice Q au plus on l'augmente au plus il est dit qu'on ne fait pas confiance à la matrice Q.
                     Dt = (T1 - T0)/1000,
-
                     
-                    [{Xor1,Por1}] = kalman_orientation(Acc, Acclin, Gyro, Mag, R0, Xnew), %A check si je peux faire ça comme ça 
-                    
-                    
-                    
-                    Xarray2 = mat:to_array(Xor1),
-                    
-                    % Pour visualiser il faut utiliser le yaw =>
-                    Yaw = quat_to_yaw(normalize_quat(Xor1)), 
-
-                    % Prendre la vitesse des roues du robot 
-                    {Speed,_} = main_loop:i2c_read(),
-                    Vx = Speed * math:cos(Yaw),
-                    Vy = Speed * math:sin(Yaw),
-
-
+    
                     F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
                         [0, 1, Dt,       0, 0, 0],
@@ -83,7 +68,15 @@ measure(State) ->
                         [0, 0, 0,        0, 0, 1]
                     ]),
 
-                    Q = mat:diag([?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction, ?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction]),
+                    Q = mat:diag([?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction]),
+                    
+                    H = mat:matrix([
+                        [0,1,0,0,0,0], % Vitesse X
+                        [0,0,0,0,1,0], % Vitesse Y
+                        [0,0,1,0,0,0], %Acc x
+                        [0,0,0,0,0,1]  %ACC y   
+                    
+                    ]),                
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
                     
                     
@@ -91,7 +84,7 @@ measure(State) ->
                     [_, _, [Axlin], _, _, [Aylin]] = Xpred,
                     AccLin2 = [[Axlin, Aylin, 0.0]],
 
-                    [{Xor1,Por1}] = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0),
+                    [{Xor1,Por1}] = kalman_orientation(Acc, AccLin2, Gyro, Mag, R0, R, T1, T0, Xor, Por),
 
                     Xarray2 = mat:to_array(Xor1),
                     
@@ -103,7 +96,7 @@ measure(State) ->
                     Vx = Speed * math:cos(Yaw),
                     Vy = Speed * math:sin(Yaw),
 
-                    Z = mat:matrix([[Vx], [Vy], [AxLin], [AyLin]]),
+                    Z = mat:matrix([[Vx], [Vy], [Axlin], [Aylin]]),
                     R = mat:diag([?VAR_V,?VAR_V,?VAR_AZ,?VAR_AZ]),
 
                     
@@ -122,8 +115,8 @@ measure(State) ->
                         seq  => Seq +1
                     },
                     
-                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
-                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw, OldRoom]),
+                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw, OldRoom]),
 
                     {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState};
                     
@@ -157,7 +150,7 @@ measure(State) ->
                     [_, _, [Axlin], _, _, [Aylin]] = Xpred,
                     AccLin2 = [[Axlin, Aylin, 0.0]],
 
-                    [{Xor1,Por1}] = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0),
+                    [{Xor1,Por1}] = kalman_orientation(Acc ,AccLin2 ,Gyro ,Mag ,R0 ,R ,T1 ,T0 ,Xor ,Por),
 
                     Xarray2 = mat:to_array(Xor1),
                     
@@ -169,7 +162,7 @@ measure(State) ->
                     Vx = Speed * math:cos(Yaw),
                     Vy = Speed * math:sin(Yaw),
 
-                    Z = mat:matrix([[Xout],[Yout],[Vx],[Vy],[AxLin],[AyLin]]),
+                    Z = mat:matrix([[Xout],[Yout],[Vx],[Vy],[Axlin],[Aylin]]),
                     R = mat:diag([?VAR_S, ?VAR_S,?VAR_V,?VAR_V,?VAR_AZ,?VAR_AZ]),
 
                     
@@ -188,10 +181,10 @@ measure(State) ->
                         seq  => Seq +1
                     },
                     
-                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
-                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom]),
+                    hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw, OldRoom]),
+                    send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw, OldRoom]),
 
-                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), OldAngle, OldRoom], robot_pos, robot, NewState}
+                    {ok, [lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw, OldRoom], robot_pos, robot, NewState}
             end
     end.               
 %============================================================================================================================================
@@ -200,15 +193,25 @@ measure(State) ->
 
 calibrate() ->
     N = 500,
-    {G_x_List, G_y_List, G_z_List} = [pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]) || _ <- lists:seq(1, N)],
-    {M_x_List_ref, M_y_List_ref, M_z_List_ref} = [pmod_nav:read(acc, [out_x_m, out_y_m, out_z_m]) || _ <- lists:seq(1, N)],
+    Gyro_data = [ pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])
+                || _ <- lists:seq(1, N) ],
 
-    {Gx0_pos, Gy0_pos, Gz0_pos} = [lists:sum([Y || [Y] <- List]) / N || List <- [G_x_List, G_y_List, G_z_List]],
-    {M_x_List, M_y_List, M_z_List} = [lists:sum([Y || [Y] <- List]) / N || List <- [M_x_List_ref, M_y_List_ref, M_z_List_ref]],
+    G_x_List = [ X || {X,_,_} <- Gyro_data ],
+    G_y_List = [ Y || {_,Y,_} <- Gyro_data ],
+    G_z_List = [ Z || {_,_,Z} <- Gyro_data ],
+
+    AngVel_data = [pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]) || _ <- lists:seq(1, N)],
+
+    M_x_List = [ X || {X,_,_} <- AngVel_data ],
+    M_y_List = [ Y || {_,Y,_} <- AngVel_data ],
+    M_z_List = [ Z || {_,_,Z} <- AngVel_data ],
+
+    [Gx0_pos, Gy0_pos, Gz0_pos] = [lists:sum(List) / N || List <- [G_x_List, G_y_List, G_z_List]],
+    [Mx0, My0, Mz0] = [lists:sum(List) / N || List <- [M_x_List, M_y_List, M_z_List]],
 
     io:format("[KALMAN_MEASURE] Done calibrating~n"),
     persistent_term:put(gyro_init, {Gx0_pos, Gy0_pos, Gz0_pos}),
-    persistent_term:put(mag_init, {M_x_List, M_y_List, M_z_List}).    
+    persistent_term:put(mag_init, {Mx0, My0, Mz0}).    
 
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
@@ -305,7 +308,6 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
-
 q2dcm([[Q0], [Q1], [Q2], [Q3]]) -> 
     R00 = 2 * (Q0 * Q0 + Q1 * Q1) - 1,
     R01 = 2 * (Q1 * Q2 - Q0 * Q3),
@@ -319,10 +321,11 @@ q2dcm([[Q0], [Q1], [Q2], [Q3]]) ->
     R21 = 2 * (Q2 * Q3 + Q0 * Q1),
     R22 = 2 * (Q0 * Q0 + Q3 * Q3) - 1,
 
-    [[R00, R01, R02],
-     [R10, R11, R12],
-     [R20, R21, R22]].
-
+    mat:matrix([
+        [R00, R01, R02],
+        [R10, R11, R12],
+        [R20, R21, R22]
+    ]).
 
 ahrs(Acc, Mag) ->
     Down = unit([-A || A <- Acc]),
@@ -348,24 +351,21 @@ dcm2quat(R) ->
 scale(List, Factor) ->
     [X*Factor || X <- List].
 
-
 get_val_nav(R) ->
-
-
     [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
     [Gx, Gy, Gz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]),
-    [Mx, My, Mz] = pmod_nav:read(acc, [out_x_m, out_y_m, out_z_m]),
+    [Mx, My, Mz] = pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]),
 
     Acc = scale([Ax,Ay,-Az],9.81),
 
-    [GBx, GBy, GBz] = persistent_term:get(gyro_init),
+    {GBx, GBy, GBz} = persistent_term:get(gyro_init),
     Gyro = scale([Gx-GBx,Gy-GBy,-(Gz-GBz)],math:pi()/180),
 
-    [MBx,MBy,MBz] = persistent_term:get(gyro_init),
+    {MBx,MBy,MBz} = persistent_term:get(mag_init),
     Mag = [-(Mx-MBx),My-MBy,-(Mz-MBz)],
 
-    AccRot = mat:'*'([Acc], mat:tr(R)),  % rotation dans le repère monde
-    RotAcc = mat:'-'(AccRot, [[0, 0, -9.81]]),  % compensation gravité
+    AccRot = mat:'*'(mat:matrix([Acc]), mat:tr(R)),  % rotation dans le repère monde
+    RotAcc = mat:'-'(AccRot, mat:matrix([[0, 0, -9.81]])),  % compensation gravité
 
     R0 = ahrs([Ax,Ay,-Az], [-(Mx-MBx),My-MBy,-(Mz-MBz)]),
     mat:tr(R0),
@@ -386,7 +386,7 @@ cross_product([U1,U2,U3], [V1,V2,V3]) ->
     [U2*V3-U3*V2, U3*V1-U1*V3, U1*V2-U2*V1].
 
 
-kalman_orientation(Acc, AccLin2, Gyro, Mag, R0) ->
+kalman_orientation(Acc, AccLin2, Gyro, Mag, R0,Orientation,T1,T0,Xor,Por) ->
     
     AccRot2 = mat:'*'(AccLin2, Orientation),
     [Acc1,Acc2,Acc3] = Acc, 
@@ -410,7 +410,7 @@ kalman_orientation(Acc, AccLin2, Gyro, Mag, R0) ->
     Zor = mat:tr([Quat]),
     Ror = mat:diag([?VAR_R,?VAR_R,?VAR_R,?VAR_R]),
 
-    {Xor0, Por0} = kalman:kf_predict({Xor,Por}, For, Qor),
+    {Xor0, Por0} = kalman:kf_predict({Xor, Por}, For, Qor),
     {Xor1, Por1} = case qdot(Zor, Xor0) > 0 of
         true ->
             kalman:kf_update({Xor0, Por0}, Hor, Ror, Zor);
@@ -418,3 +418,7 @@ kalman_orientation(Acc, AccLin2, Gyro, Mag, R0) ->
             kalman:kf_update({mat:'*'(-1,Xor0), Por0}, Hor, Ror, Zor)
     end,
     {Xor1,Por1}.
+
+unit(V) ->
+    Norm = math:sqrt(lists:sum([X*X || X <- V])),
+    [X/Norm || X <- V].
