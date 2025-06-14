@@ -3,8 +3,8 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(MEASURE_ACCEPTABLE_RANGE, 50).
--define(TIMESLOT_SIZE, 200).
+-define(MEASURE_ACCEPTABLE_RANGE, 10).
+-define(TIMESLOT_SIZE, 300).
 -define(MIN_MEASURE_PERIOD, ?TIMESLOT_SIZE/2).
 
 -export([init/1, measure/1]).
@@ -34,7 +34,9 @@ measure(State) ->
         {master, TimeClock, _} ->
             Phase = get_phase(TimeClock, Current_time),
             if 
-                Phase >= 0, Phase < 50 ->
+                Phase >= ?TIMESLOT_SIZE-25 ->
+                    get_measure(State, SensorName);
+                Phase < 25 ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -42,7 +44,7 @@ measure(State) ->
         {slave, TimeClock, Offset} ->
             Phase = get_phase(TimeClock, Current_time, Offset),
             if 
-                Phase >= (?TIMESLOT_SIZE/2), Phase < (?TIMESLOT_SIZE/2)+50 ->
+                Phase >= (?TIMESLOT_SIZE/2)-25, Phase < (?TIMESLOT_SIZE/2)+25 ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -155,35 +157,41 @@ get_ground_distance(SensorName, D) ->
             {stop, cannot_get_height}
     end.
 
-    check_measure_range(Ground_measure, State, SensorName) ->
-        % Smoothes the measure (filters bad measures due to interferences)
-        % @param Ground_measure : measure in cm (Integer)
-        % @param State : the internal state of the module (tuple)
-        % @param SensorName : the name of the current sensor (atom)
-        #{
-            seq := Seq,
-            last_measure := Last_measure,
-            timestamp := Timestamp
-        } = State,
+check_measure_range(Ground_measure, State, SensorName) ->
+    % Smoothes the measure (filters bad measures due to interferences)
+    % @param Ground_measure : measure in cm (Integer)
+    % @param State : the internal state of the module (tuple)
+    % @param SensorName : the name of the current sensor (atom)
+    #{
+        seq := Seq,
+        last_measure := Last_measure,
+        timestamp := Timestamp
+    } = State,
 
-        Current_timestamp = hera:timestamp(),
-        if
-            Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE orelse Timestamp - Current_timestamp > ?MIN_MEASURE_PERIOD -> 
-                % Only keep the measure if it is within MEASURE_ACCEPTABLE_RANGE of the last measure or if there was no measure for MIN_MEASURE_PERIOD
-                %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
-                hera_com:send_unicast(server, "Distance,"++float_to_list(Ground_measure)++","++atom_to_list(SensorName), "UTF8"),
-        
-                hera_data:store(distance, SensorName, Seq, [Ground_measure]),
-                NewState = #{
-                    seq => Seq + 1,
-                    last_measure => Ground_measure,
-                    timestamp => Current_timestamp
-                },
-                {ok, [Ground_measure], distance, SensorName, NewState};
-            true ->
-                io:format("[SONAR_SENSOR] ground distance exceeds the acceptable range by ~p~n", [abs(Last_measure - Ground_measure) - ?MEASURE_ACCEPTABLE_RANGE]),
-                {undefined, State}
-    end.
+    Current_timestamp = hera:timestamp(),
+    if
+        Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE -> 
+            % Only keep the measure if it is within MEASURE_ACCEPTABLE_RANGE of the last measure or if there was no measure for MIN_MEASURE_PERIOD
+            accept_measure(Ground_measure, SensorName, Current_timestamp, Seq);
+        Current_timestamp - Timestamp > ?MIN_MEASURE_PERIOD ->
+            accept_measure(Ground_measure, SensorName, Current_timestamp, Seq);        
+        true ->
+            io:format("[SONAR_SENSOR] ground distance exceeds the acceptable range by ~p~n", [abs(Last_measure - Ground_measure) - ?MEASURE_ACCEPTABLE_RANGE]),
+            {undefined, State}
+end.
+
+accept_measure(Ground_measure, SensorName, Current_timestamp, Seq) ->
+    %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
+    hera_com:send_unicast(server, "Distance,"++float_to_list(Ground_measure)++","++atom_to_list(SensorName), "UTF8"),
+
+    hera_data:store(distance, SensorName, Seq, [Ground_measure]),
+    NewState = #{
+        seq => Seq + 1,
+        last_measure => Ground_measure,
+        timestamp => Current_timestamp
+    },
+    {ok, [Ground_measure], distance, SensorName, NewState}.
+
 
 %============================================================================================================================================
 %=========================================================== HELPER FUNC ====================================================================
@@ -218,5 +226,3 @@ get_phase(Start, Now, Offset) ->
         true      -> Phase0
     end,
     Phase.
-
-
