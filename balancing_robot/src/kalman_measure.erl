@@ -201,4 +201,3 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
                     no_intersection
             end
     end.
-
