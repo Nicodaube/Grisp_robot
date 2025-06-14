@@ -62,7 +62,7 @@ class User_interface:
     def __init__(self, trajectory):
 
         pygame.init()
-        self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        #self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
         info = pygame.display.Info()
         self.WIDTH, self.HEIGHT = info.current_w, info.current_h
 
@@ -248,16 +248,16 @@ class User_interface:
 
             self.close_popup()
             self.temp_origin = None
-
         elif event.ui_element == self.UI_elements.get("Room"):
             self.close_popup()
             self.create_room_popup()
         elif event.ui_element == self.UI_elements.get("Submit_robot_pos"):
             Robot_x = self.UI_elements.get("Robot_x").get_text()
-            Robot_y = self.UI_elements.get("Robot_y").get_text()            
+            Robot_y = self.UI_elements.get("Robot_y").get_text() 
+            Robot_angle = self.UI_elements.get("Robot_angle").get_text() 
                 
             try :
-                self.server.update_robot((float(Robot_x),float(Robot_y)), 0, self.rooms[0]) #TODO: GET ROBOT ROOM FROM X AND Y
+                self.server.update_robot((float(Robot_x),float(Robot_y)), int(Robot_angle), self.rooms[0]) #TODO: GET ROBOT ROOM FROM X AND Y
                 self.robot = self.server.robot
                 self.robot.confirmed = True
             except:        
@@ -385,10 +385,12 @@ class User_interface:
         if len(self.rooms) == 0:
             self.draw_image("plus_L_0", self.WIDTH//2, self.HEIGHT//2)
 
-    def draw_image(self, name, x, y):
-        plus_rect = self.image_dict.get(name).get_rect(center = (x, y))
-        self.screen.blit(self.image_dict.get(name), self.image_dict.get(name).get_rect(center=plus_rect.center))
-        self.rect_dict[name] = plus_rect
+    def draw_image(self, name, x, y, angle=0):
+        image = self.image_dict.get(name)
+        image = pygame.transform.rotate(image, 360-angle)
+        image_rect = image.get_rect(center = (x, y))
+        self.screen.blit(image, image_rect)
+        self.rect_dict[name] = image_rect
 
     def draw_room(self, room):
         room_rect = pygame.Rect(0, 0, room.width, room.height)
@@ -453,7 +455,7 @@ class User_interface:
     def draw_robot(self):
         if self.robot != None and self.robot.confirmed:
             x, y = self.get_screen_pos(self.robot.real_pos[0], self.robot.real_pos[1])
-            self.draw_image("robot", x, y)
+            self.draw_image("robot", x, y, self.robot.angle)
 
 #==========================================================================================================================================
 #===================================================== POPUP LOGIC ========================================================================
@@ -804,7 +806,7 @@ class User_interface:
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
         popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 3
+        popup_height = self.HEIGHT // 2
         margin_left = (self.WIDTH - button_width)//20
         margin = 20
 
@@ -852,13 +854,29 @@ class User_interface:
 
         width_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            text="height (m):",
+            text="Height (m):",
             manager=self.manager,
             container=popup_window
         )
         current_y += button_height + margin
 
         self.UI_elements["Robot_y"] = pygame_gui.elements.UITextEntryLine(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            manager=self.manager,
+            container=popup_window
+        )
+
+        current_y += button_height + margin
+
+        width_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
+            text="Angle (°):",
+            manager=self.manager,
+            container=popup_window
+        )
+        current_y += button_height + margin
+
+        self.UI_elements["Robot_angle"] = pygame_gui.elements.UITextEntryLine(
             relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
             manager=self.manager,
             container=popup_window
@@ -1073,7 +1091,7 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            self.serial_comm()
+            #self.serial_comm()
 
         # Quit
         pygame.quit()
