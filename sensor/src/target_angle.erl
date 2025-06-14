@@ -51,6 +51,7 @@ get_data(Name) ->
         {error, pos}
     end.
 
+%Il faut intégrer l'angle des sensor dans le calcul (à check)
 compute_angle(X, Y, Ox, Oy, Dist, Odist) ->
     % Compute the angle of the robot based on the two sensors measurement and the law of cosines
     % @param X : current sensor x axis pos (Float)

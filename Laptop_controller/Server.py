@@ -11,6 +11,7 @@ class Server:
     PORT = 5000
     buffer = []
     sensors = {}
+    room_edges = []
     started = False
 
     def __init__(self):
@@ -50,7 +51,9 @@ class Server:
                     if data_split[0] == "Hello": # Received from a device when it has discovered the sever
                         self.handle_hello(data_split, addr)                        
                     elif data_split[0] == "Robot_pos": # Received from devices at each iteration of the kalman measure (only saves robot update)
-                        self.update_robot_pos(data, addr)                        
+                        self.update_robot_pos_kalman(data, addr)   
+                    elif data_split[0] == "Robot_sonar_pos": # Received from devices at each iteration of the kalman measure (only saves robot update)
+                        self.update_robot_pos_sonar(data, addr)  
                     elif data_split[0] == "Ack": # Received from devices after each configuration message
                         self.handle_ack(data)   
                     elif data_split[0] == "Distance":
@@ -80,7 +83,7 @@ class Server:
             print("[SERVER] Received hello from sensor_" + str(id) + " on (" + str(addr[0]) + ", " + str(addr[1]) + ")")
             self.send("Ack , server", "uni", id)
 
-    def update_robot_pos(self, data, addr):
+    def update_robot_pos_sonar(self, data, addr):
         # Updates the robot position based on the message received
         # @param data : the decoded data received (String)
         # @param addr : the Ip address and Port associated with the received message (List)
@@ -88,6 +91,15 @@ class Server:
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
             self.csv_saver.save_robot_pos_sonar(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
+
+    def update_robot_pos_kalman(self, data, addr):
+        # Updates the robot position based on the message received
+        # @param data : the decoded data received (String)
+        # @param addr : the Ip address and Port associated with the received message (List)
+
+        data_split = data.strip().split(",")
+        if addr[0] == self.robot.ip:
+            self.csv_saver.save_robot_pos_kalman(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
             self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
 
     def handle_ack(self, data):
@@ -102,13 +114,17 @@ class Server:
         if origin != "robot":                                                
             if config_message == "Pos":
                 self.ack_pos.get(id)[int(origin)-1] = True   
+            elif config_message == "Room_info":
+                self.ack_rooms.get(int(id))[int(origin)-1] = True
             else :
                 self.ack_devices.get(id)[int(origin)-1] = True
         else :
             if config_message == "Pos":
-                self.ack_pos.get(id)[len(self.sensors.key())] = True   
+                self.ack_pos.get(id)[len(self.sensors.keys())] = True   
+            elif config_message == "Room_info":
+                self.ack_rooms.get(int(id))[len(self.sensors.keys())] = True
             else :
-                self.ack_devices.get(id)[len(self.sensors.key())] = True   
+                self.ack_devices.get(id)[len(self.sensors.keys())] = True   
         print("[SERVER] Received Ack " + config_message + " for " + id + " from " + origin)   
 
 #==========================================================================================================================================
@@ -120,11 +136,15 @@ class Server:
         # @param message: the message to be sent (String)
         # @param type: the way the message has to be sent, can be "brd" for broadcast and "uni" for unicast (String)
         # @param id: the identifier of the device to update (String, Integer, None)
+        if message == "Exit":
+            self.csv_saver.print_plots()
 
         if type == "brd":
             threading.Thread(target=self.brd_server, args=(message,), daemon=True).start()
         elif type == "uni":
             threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
+
+        
 
     def brd_server(self, message):
         # Sends a broadcast message
@@ -168,11 +188,15 @@ class Server:
         self.started = True
         self.ack_devices = {}
         self.ack_pos = {}
+        self.ack_rooms = {}
 
         for sensor in self.sensors.values() :
-            sensor_config_ok = self.send_sensor_info(sensor)
+            sensor_config_ok = self.send_sensor_infos(sensor)
 
         if sensor_config_ok:
+            room_config_ok = self.send_rooms_infos()
+
+        if room_config_ok:
             self.send_robot_info()
         
             time.sleep(1)
@@ -181,7 +205,7 @@ class Server:
         else :
             self.send("Exit", "brd")
 
-    def send_sensor_info(self, sensor):
+    def send_sensor_infos(self, sensor):
         # Sends all the informations about a sensor to all the devices
         # @param sensor: the actual sensor from which we draw the info (Sensor)
         # @return a ack boolean if the informations of this sensor where successfully delivered to everyone, false otherwise
@@ -203,8 +227,9 @@ class Server:
                 self.send(message, "brd")
                 time.sleep(0.5)
 
-                ack = self.check_ack("sensor_" + str(sensor.id))
+                ack = self.check_ack("sensor_" + str(sensor.id), "sensor")
                 LIMIT += 1
+        
         return ack
 
     def send_robot_info(self): # Sends all the informations about the robot to all the devices
@@ -218,19 +243,48 @@ class Server:
                 message = "Init_pos : " + str(self.robot.real_pos[0]) + " , " + str(self.robot.real_pos[1]) + " , " + str(self.robot.angle) + " , " + str(self.robot.room)
                 self.send(message, "brd")
                 
-                ack = self.check_ack("robot")
+                ack = self.check_ack("robot", "sensor")
                 LIMIT +=1
 
-    def check_ack(self, id): 
+    def send_rooms_infos(self):
+        
+        for room_idx in range(len(self.room_edges)):
+            self.ack_rooms[room_idx] = [False for i in range(len(self.sensors.keys())+1)]
+            ack = False
+
+            LIMIT = 0
+            while (not ack) and (LIMIT < 10):
+                message = "Room_info," + str(room_idx) 
+                message += "," + str(self.room_edges[room_idx][0][0]) 
+                message += "," + str(self.room_edges[room_idx][0][1])
+                message += "," + str(self.room_edges[room_idx][1][0])
+                message += "," + str(self.room_edges[room_idx][1][1])
+                self.send(message, "brd")
+                time.sleep(0.5)
+
+                ack = self.check_ack(room_idx, "room")
+                LIMIT += 1
+            
+            if not ack:
+                return False
+        return True
+
+    def check_ack(self, id, type): 
         # Checks that all devices have acknowledged all the informations about the current device 
         # @return True if all devices acked, False otherwise
 
-        for i in range(len(self.sensors.keys())):
-            if not self.ack_devices.get(id)[i]:
-                return False
-            if not self.ack_pos.get(id)[i]:
-                return False
-        return True
+        if type == "sensor":
+            for i in range(len(self.sensors.keys())+1):
+                if not self.ack_devices.get(id)[i]:
+                    return False
+                if not self.ack_pos.get(id)[i]:
+                    return False
+            return True
+        elif type == "room":
+            for i in range(len(self.sensors.keys())+1):
+                if not self.ack_rooms.get(id)[i]:
+                    return False
+            return True
 
 #==========================================================================================================================================
 #============================================================= API FUNCTIONS ==============================================================
@@ -267,3 +321,7 @@ class Server:
         # @param room: the room in which the robot is placed (Integer)
         
         self.robot.update_pos(real_pos[0], real_pos[1], angle, room.room_num)
+
+    def add_edges(self, TLpos, BRpos):
+
+        self.room_edges.append((TLpos, BRpos))
