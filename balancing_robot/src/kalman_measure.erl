@@ -55,10 +55,13 @@ measure(State) ->
             
             case get_new_robot_pos(OldRoom) of
                 no_intersection ->
-                    Correction = 1, %%sert à changer les variables de la matrice Q au plus on l'augmente au plus il est dit qu'on ne fait pas confiance à la matrice Q.
+                    Correction = 1, 
                     Dt = (T1 - T0)/1000,
                     
-    
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   kalman position   %%%%%%%%%%%
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
                     F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
                         [0, 1, Dt,       0, 0, 0],
@@ -76,34 +79,42 @@ measure(State) ->
                         [0,0,1,0,0,0], %Acc x
                         [0,0,0,0,0,1]  %ACC y   
                     
-                    ]),                
+                    ]),     
+
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
                     
-                    
-                    
-                    [_, _, [Axlin], _, _, [Aylin]] = Xpred,
-                    AccLin2 = [[Axlin, Aylin, 0.0]],
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   kalman orientaion     %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-                    [{Xor1,Por1}] = kalman_orientation(Acc, AccLin2, Gyro, Mag, R0, R, T1, T0, Xor, Por),
+                    Axlin = lists:nth(3, mat:to_array(Xpred)),
+                    Aylin = lists:nth(6, mat:to_array(Xpred)),
+                    AccLin2 = mat:matrix(
+                        [[Axlin,Aylin,0.0]]),
 
-                    Xarray2 = mat:to_array(Xor1),
-                    
-                    % Pour visualiser il faut utiliser le yaw =>
-                    Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
+                    {Xor1, Por1} = kalman_orientation(Acc ,AccLin2 ,Gyro ,Mag ,R0 ,R ,T1 ,T0 ,Xor ,Por),
 
-                    % Prendre la vitesse des roues du robot 
-                    {Speed,_} = i2c_read(),
+                  
+                    Yaw1 = quat_to_yaw(mat:to_array(Xor1)), 
+
+                    {Speed,_} = i2c_read(), % Wheel's speed
                     Vx = Speed * math:cos(Yaw1),
                     Vy = Speed * math:sin(Yaw1),
 
-                    Z = mat:matrix([[Vx], [Vy], [Axlin], [Aylin]]),
+                    Z = mat:matrix([[Vx],[Vy],[Axlin],[Aylin]]),
                     R1 = mat:diag([?VAR_V,?VAR_V,?VAR_AZ,?VAR_AZ]),
 
-                    
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   New position %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
                     {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R1, Z),
                     
-                    Xarray1 = mat:to_array(Xnew),
-                    Xarray = Xarray1 ++ Xarray2,
+                    Xarray = mat:to_array(Xnew),
+                    
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   New Statement   %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
                     NewState = #{ 
                         t0   => T1,
@@ -115,6 +126,10 @@ measure(State) ->
                         seq  => Seq +1
                     },
                     
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
                     hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw1, OldRoom]),
                     send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw1, OldRoom]),
 
@@ -123,8 +138,9 @@ measure(State) ->
                 {Xout, Yout} ->
                     Dt = (T1 - T0)/1000,
 
-
-                    % kalman position
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   kalman position   %%%%%%%%%%%
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     F = mat:matrix([
                         [1, Dt, Dt*Dt/2, 0, 0, 0],
                         [0, 1, Dt,       0, 0, 0],
@@ -147,35 +163,37 @@ measure(State) ->
                 
                     {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
 
-                    Xpredarray = mat:to_array(Xpred),
-                    io:format("Xpredarray : ~p~n",[Xpredarray]),
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   kalman orientaion with    %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-                    Axlin = lists:nth(3, Xpredarray),
-                    Aylin = lists:nth(6, Xpredarray),
-
+                    Axlin = lists:nth(3, mat:to_array(Xpred)),
+                    Aylin = lists:nth(6, mat:to_array(Xpred)),
                     AccLin2 = mat:matrix(
-                        [[Axlin, Aylin, 0.0]]),
+                        [[Axlin,Aylin,0.0]]),
 
                     {Xor1, Por1} = kalman_orientation(Acc ,AccLin2 ,Gyro ,Mag ,R0 ,R ,T1 ,T0 ,Xor ,Por),
-
-                    Xarray2 = mat:to_array(Xor1),
                     
-                    % Pour visualiser il faut utiliser le yaw =>
-                    Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
+                    Yaw1 = quat_to_yaw(mat:to_array(Xor1)), 
 
-                    % Prendre la vitesse des roues du robot 
-                    {Speed,_} = i2c_read(),
+                    {Speed,_} = i2c_read(), % wheel's speed
                     Vx = Speed * math:cos(Yaw1),
                     Vy = Speed * math:sin(Yaw1),
 
                     Z = mat:matrix([[Xout],[Yout],[Vx],[Vy],[Axlin],[Aylin]]),
                     R1 = mat:diag([?VAR_S, ?VAR_S,?VAR_V,?VAR_V,?VAR_AZ,?VAR_AZ]),
 
-                    
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   New position %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
                     {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R1, Z),
                     
-                    Xarray1 = mat:to_array(Xnew),
-                    Xarray = Xarray1 ++ Xarray2,
+                    Xarray = mat:to_array(Xnew),
+
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   New Statement   %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
                     NewState = #{ 
                         t0   => T1,
@@ -186,6 +204,10 @@ measure(State) ->
                         yaw => Yaw1,
                         seq  => Seq +1
                     },
+
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
+                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     
                     hera_data:store(robot_pos, robot, Seq, [lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw1, OldRoom]),
                     send_robot_pos([lists:nth(1, Xarray), lists:nth(4, Xarray), Yaw1, OldRoom]),
@@ -194,7 +216,7 @@ measure(State) ->
             end
     end.               
 %============================================================================================================================================
-%======================================================= CALIBRATION FUNC ========================================================================
+%======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
 
 calibrate() ->
@@ -378,12 +400,14 @@ get_val_nav(R) ->
     {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
 
 
-quat_to_yaw([[Q0], [Q1], [Q2], [Q3]]) ->
-    math:atan2(2*(Q0*Q3 + Q1*Q2), 1 - 2*(Q2*Q2 + Q3*Q3)).
-
-normalize_quat([Q0, Q1, Q2, Q3]) ->
+quat_to_yaw([Q0, Q1, Q2, Q3]) ->
     Norm = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
-    [[Q0 / Norm], [Q1 / Norm], [Q2 / Norm], [Q3 / Norm]].
+    Q0n = Q0 / Norm,
+    Q1n = Q1 / Norm,
+    Q2n = Q2 / Norm,
+    Q3n = Q3 / Norm,
+    math:atan2(2 * (Q0n * Q3n + Q1n * Q2n), 1 - 2 * (Q2n * Q2n + Q3n * Q3n)).
+
 
 qdot([Q11, Q12, Q13, Q14], [Q21, Q22, Q23, Q24]) ->
     Q11*Q21 + Q12*Q22 + Q13*Q23 + Q14*Q24.
