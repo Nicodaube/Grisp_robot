@@ -90,7 +90,7 @@ class Server:
 
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
-            self.csv_saver.save_robot_pos_sonar(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
+            self.csv_saver.save_robot_pos_sonar(float(data_split[1]), float(data_split[2]), float(data_split[3]), int(data_split[4]))
 
     def update_robot_pos_kalman(self, data, addr):
         # Updates the robot position based on the message received
@@ -99,8 +99,8 @@ class Server:
 
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
-            self.csv_saver.save_robot_pos_kalman(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
-            self.robot.update_pos(float(data_split[1]), float(data_split[2]), int(data_split[3]), int(data_split[4]))
+            self.csv_saver.save_robot_pos_kalman(float(data_split[1]), float(data_split[2]), float(data_split[3]), int(data_split[4]))
+            self.robot.update_pos(float(data_split[1]), float(data_split[2]), float(data_split[3]), int(data_split[4]))
 
     def handle_ack(self, data):
         # Processes the ack message, updates the ack list
