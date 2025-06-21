@@ -7,15 +7,15 @@ import time
 
 class Server:
 
-    HOST = '172.20.10.8'
-    BRD_IP = '172.20.10.15'
     PORT = 5000
     buffer = []
     sensors = {}
     room_edges = []
     started = False
 
-    def __init__(self):
+    def __init__(self, IP, BRD_IP):
+        self.HOST = IP
+        self.BRD_IP = BRD_IP
         self.robot = Robot()
         self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
         self.rcvServer.start()

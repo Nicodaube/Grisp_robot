@@ -59,7 +59,7 @@ class User_interface:
     # Saved Files
     saved_files = []
     
-    def __init__(self, trajectory):
+    def __init__(self, IP, BRD_IP, trajectory):
 
         pygame.init()
         self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
@@ -74,7 +74,7 @@ class User_interface:
         self.clock = pygame.time.Clock()
         self.clock.tick(200)
 
-        self.server = Server()
+        self.server = Server(IP, BRD_IP)
         self.defined_trajectory(trajectory)
 
         self.load_figures()
@@ -1080,8 +1080,8 @@ class User_interface:
         sys.exit()
 
 if __name__ == '__main__':
-    if len(sys.argv) == 1:
-        ui = User_interface(None)
+    if len(sys.argv) == 3:
+        ui = User_interface(sys.argv[1], sys.argv[2], None)
     else :
-        ui = User_interface(sys.argv[1])
-    ui.main_loop()
+        ui = User_interface(sys.argv[1], sys.argv[2], sys.argv[3])
+    ui.main_loop()  
