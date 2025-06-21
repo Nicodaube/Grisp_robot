@@ -35,14 +35,14 @@ void setup_spi_slave() {
     .max_transfer_sz = 128
   };
 
-  spi_slave_interface_config_t slave_configuration = {
-    .mode = 0,
-    .spics_io_num = PIN_CS,
-    .queue_size = 3,
-    .flags = 0,
-    .post_setup_cb = NULL,
-    .post_trans_cb = NULL
-  };
+  spi_slave_interface_config_t slave_configuration;
+  slave_configuration.mode = 0;
+  slave_configuration.spics_io_num = PIN_CS;
+  slave_configuration.queue_size = 3;
+  slave_configuration.flags = 0;
+  slave_configuration.post_setup_cb = NULL;
+  slave_configuration.post_trans_cb = NULL;
+
 
   esp_err_t ret;
   ret = spi_slave_initialize(HSPI_HOST, &buss_cofiguration, &slave_configuration, SPI_DMA_DISABLED);
@@ -52,22 +52,22 @@ void setup_spi_slave() {
 
 void setup(){
   Serial.begin(115200);
-  setup_wifi_ap();
+  setup_wifi();
   setup_spi_slave();
 }
 
 void loop() {
   spi_slave_transaction_t t;
   memset(&t, 0, sizeof(t));
-  t.length = 8 * sizeof(recv_buf);  // True size of transmission in bits
-  t.rx_buffer = recv_buf; // Sets the receiving buffer
+  t.length = 8 * sizeof(rcv_buf);  // True size of transmission in bits
+  t.rx_buffer = rcv_buf; // Sets the receiving buffer
 
   esp_err_t ret = spi_slave_transmit(HSPI_HOST, &t, portMAX_DELAY); // Wait for data coming from spi
 
   if (ret == ESP_OK) {
     Serial.print("Received via SPI: ");
     for (int i = 0; i < t.trans_len / 8; i++) {
-      Serial.print((char)recv_buf[i]);
+      Serial.print((char)rcv_buf[i]);
     }
     Serial.println();
   }

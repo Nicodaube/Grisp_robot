@@ -243,19 +243,10 @@ start_measures(Id) ->
     % @param Id : Sensor's Id set by the jumpers (Integer)
     io:format("=================================================================================================~n"),
     io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),
-    case find_other_sensor() of
-        ok ->
-            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
-            persistent_term:put(sonar_sensor, Sonar_Pid),
-            persistent_term:put(target_angle, Angle_Pid);            
-        _ -> 
-            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-            persistent_term:put(sonar_sensor, Sonar_Pid)
-    end,    
+    find_other_sensor(),
+    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+    persistent_term:put(sonar_sensor, Sonar_Pid),
            
-    %{ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-    
     %persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop(Id).
@@ -294,8 +285,6 @@ reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
     exit_measure_module(sonar_sensor),
-    exit_measure_module(target_angle),
-    %exit_measure_module(kalman_measure),
 
     timer:sleep(500),
     reset_data(),

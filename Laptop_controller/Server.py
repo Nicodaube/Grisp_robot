@@ -8,6 +8,7 @@ import time
 class Server:
 
     HOST = '172.20.10.8'
+    BRD_IP = '172.20.10.15'
     PORT = 5000
     buffer = []
     sensors = {}
@@ -153,11 +154,10 @@ class Server:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
             srv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-            broadcast_ip = '172.20.10.15'
             port = 9000            
-            srv_socket.sendto(message.encode(), (broadcast_ip, port))
+            srv_socket.sendto(message.encode(), (self.BRD_IP, port))
             if message[:4] != "ping":
-                print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
+                print(f"[SERVER] Broadcasted to ({self.BRD_IP}, {port}): {message}")
 
     def uni_server(self, message, id):
         # Sends a unicast message to the specified device
