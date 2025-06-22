@@ -150,7 +150,7 @@ loop_run(Id) ->
             io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
-            io:format("[SENSOR] Already started"),
+            io:format("[SENSOR] Already started~n"),
             loop_run(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop_run(Id);

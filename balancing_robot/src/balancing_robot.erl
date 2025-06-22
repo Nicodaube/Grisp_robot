@@ -19,7 +19,7 @@ start(_Type, _Args) ->
     spawn(main_loop, robot_init, []),
     hera_subscribe:subscribe(self()),
     config(),
-    loop(),
+    loop_config(),
     {ok, Supervisor}.
 
 stop(_State) -> ok.
@@ -86,7 +86,7 @@ send_udp_message(Name, Message, Type) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOOP %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-loop() ->
+loop_config() ->
     receive 
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors 
             add_device(Name, SIp, Port);          
@@ -102,13 +102,31 @@ loop() ->
             io:format("~n[ROBOT] Exit message received~n"),
             reset_state();
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
-            loop();
+            loop_config();
         {hera_notify, Msg} -> % Unhandled Message
             io:format("[ROBOT] Received unhandled message : ~p~n", [Msg]),
-            loop();
+            loop_config();
         Msg -> % Message not from hera_notify
             io:format("[ROBOT] receive strange message : ~p~n",[Msg]),
-            loop()
+            loop_config()
+    end.
+
+loop_run() ->
+    receive
+        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
+            io:format("~n[ROBOT] Already started~n"),
+            loop_run;
+        {hera_notify, ["Exit"]} -> % Received when gracefully exited the controller
+            io:format("~n[ROBOT] Exit message received~n"),
+            reset_state();
+        {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
+            loop_run();
+        {hera_notify, Msg} -> % Unhandled Message
+            io:format("[ROBOT] Received unhandled message : ~p~n", [Msg]),
+            loop_run();
+        Msg -> % Message not from hera_notify
+            io:format("[ROBOT] receive strange message : ~p~n",[Msg]),
+            loop_run()
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -130,7 +148,7 @@ add_device(Name, SIp, SPort) ->
             Port = list_to_integer(SPort),
             hera_com:add_device(OName, Ip, Port)      
     end,            
-    loop().
+    loop_config().
 
 store_robot_position(SPosx, SPosy, SAngle, SRoom) ->
     % Stores the initial robot position
@@ -149,7 +167,7 @@ store_robot_position(SPosx, SPosy, SAngle, SRoom) ->
         [] ->
             hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room])
     end,
-    loop().
+    loop_config().
 
 store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     % Store the position of a sensor
@@ -182,7 +200,7 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
     end,
     
     %io:format("[ROBOT] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
-    loop().
+    loop_config().
 
 store_room_info(RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
     % Store the dimension of a room
@@ -200,7 +218,7 @@ store_room_info(RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
 
     hera_data:store(room_info, RoomId, 1, [TLx, TLy, BRx, BRy]),
     ack_message("Room_info", RoomIdS),
-    loop(). 
+    loop_config(). 
 
 start_measures() ->
     % Launch all the hera_measure modules to gather data
@@ -210,12 +228,11 @@ start_measures() ->
     {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
     persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
-    loop(). 
+    loop_run(). 
 
 reset_state() ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    %exit_measure_module(sonar_sensor),
     exit_measure_module(kalman_measure),
 
     timer:sleep(500),
@@ -226,7 +243,7 @@ reset_state() ->
 
     discover_server(),            
     io:format("[ROBOT] Waiting for start signal ...~n~n"),
-    loop().
+    loop_config().
 
 reset_data() ->
     % Delete all config dependent and hera_measures data
