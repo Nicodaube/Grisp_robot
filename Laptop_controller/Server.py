@@ -200,8 +200,11 @@ class Server:
             self.send_robot_info()
         
             time.sleep(1)
-            message = "Start " + self.HOST
-            self.send(message, "brd")
+            for i in range(4):
+                message = "Start " + self.HOST
+                self.send(message, "brd")
+                time.sleep(0.5)                
+                
         else :
             self.send("Exit", "brd")
 
