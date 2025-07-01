@@ -21,27 +21,32 @@ robot_init() ->
     {X0, P0} = init_kalman(),
 
     %I2C bus
-    I2Cbus = grisp_i2c:open(i2c1),
-    persistent_term:put(i2c, I2Cbus),
+    case open_i2C_bus() of
+        ok ->
+            %PIDs initialisation
+            Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
+            Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
+            persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
+            persistent_term:put(freq_goal, 300.0),
 
-    %PIDs initialisation
-    Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
-    Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
-    persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
-    persistent_term:put(freq_goal, 300.0),
+            T0 = erlang:system_time()/1.0e6,
+            
+            io:format("[ROBOT] Stability ready.~n"),
 
-    T0 = erlang:system_time()/1.0e6,
-    
-	io:format("[ROBOT] Robot ready.~n"),
+            State = #{
+                robot_state => {rest, false}, %{Robot_State, Robot_Up}
+                kalman_state => {T0, X0, P0}, %{Tk, Xk, Pk}
+                move_speed => {0.0, 0.0}, % {Adv_V_Ref, Turn_V_Ref}
+                frequency => {0, 0, 200.0, T0} %{N, Freq, Mean_Freq, T_End}
+            }, 
 
-    State = #{
-        robot_state => {rest, false}, %{Robot_State, Robot_Up}
-        kalman_state => {T0, X0, P0}, %{Tk, Xk, Pk}
-        move_speed => {0.0, 0.0}, % {Adv_V_Ref, Turn_V_Ref}
-        frequency => {0, 0, 200.0, T0} %{N, Freq, Mean_Freq, T_End}
-    }, 
+            robot_loop(State);
+        error ->
+            io:format("[ROBOT] Stability could not start, retrying in 2 seconds.~n"),
+            timer:sleep(2000),
+            robot_init()
+    end.
 
-    robot_loop(State).
 
 robot_loop(State) ->
 
@@ -98,6 +103,17 @@ robot_loop(State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CONFIG FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+open_i2C_bus() ->
+    case grisp_i2c:open(i2c1) of
+        {error, _} ->
+            io:format("[ROBOT] Error while opening the i2C bus~n"),
+            grisp_led:flash(1, red, 500),
+            error;
+        I2Cbus ->
+            persistent_term:put(i2c, I2Cbus),
+            ok
+    end.
 
 calibrate() ->
     grisp_led:flash(1, green, 500),

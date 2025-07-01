@@ -32,7 +32,7 @@ config() ->
     who_am_i(),
     Id = persistent_term:get(id),
     io:format("[SENSOR] Waiting for start signal ...~n~n"),
-    loop(Id).
+    loop_config(Id).
 
 who_am_i() ->
     % Computing sensor id and storing it in persistent data
@@ -113,7 +113,7 @@ send_udp_message(Name, Message, Type) ->
 %============================================================== LOOP ========================================================================
 %============================================================================================================================================
 
-loop(Id) ->
+loop_config(Id) ->
     % Main Sensor loop
     % @param Id : Sensor's Id set by the jumpers (Integer)
     receive
@@ -127,6 +127,21 @@ loop(Id) ->
             store_room_info(Id, RoomId, TLx, TLy, BRx, BRy);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
             start_measures(Id);
+        {hera_notify, ["Exit"]} -> % Received when the controller is exited
+            io:format("~n[SENSOR] Exit message received~n"),
+            reset_state(Id);
+        {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
+            loop_config(Id);
+        {hera_notify, Msg} -> % Unhandled Message
+            io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
+            loop_config(Id);
+        Msg -> % Message not from hera_notify
+            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
+            loop_config(Id)
+    end.
+
+loop_run(Id) ->
+    receive
         {hera_notify, ["Handshake", OPriority, OTimeClock]} -> % Received from the other sensor in during the sonar sensors role distribution
             resolve_handshake(Id, OPriority, OTimeClock);
         {hera_notify, ["Ok", _]} -> % Received from the other sensor to acknowledge the roles of the sensors 
@@ -134,14 +149,17 @@ loop(Id) ->
         {hera_notify, ["Exit"]} -> % Received when the controller is exited
             io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
+        {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
+            io:format("[SENSOR] Already started~n"),
+            loop_run(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
-            loop(Id);
+            loop_run(Id);
         {hera_notify, Msg} -> % Unhandled Message
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
-            loop(Id);
+            loop_run(Id);
         Msg -> % Message not from hera_notify
             io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
-            loop(Id)
+            loop_run(Id)
     end.
 
 %============================================================================================================================================
@@ -164,7 +182,7 @@ add_device(Id, Name, SIp, SPort) ->
             Port = list_to_integer(SPort),
             hera_com:add_device(OName, Ip, Port)        
     end,            
-    loop(Id).
+    loop_config(Id).
 
 store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     % Stores the initial robot position
@@ -185,7 +203,7 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
         [] ->
             hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room])
     end,        
-    loop(Id).
+    loop_config(Id).
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     % Store the position of a sensor
@@ -218,7 +236,7 @@ store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     end,
     
     %io:format("[SENSOR] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
-    loop(Id).
+    loop_config(Id).
 
 store_room_info(Id, RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
     % Store the dimension of a room
@@ -236,29 +254,20 @@ store_room_info(Id, RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
 
     hera_data:store(room_info, RoomId, 1, [TLx, TLy, BRx, BRy]),
     ack_message("Room_info", RoomIdS, Id),
-    loop(Id).    
+    loop_config(Id).    
 
 start_measures(Id) ->
     % Launch all the hera_measure modules to gather data
     % @param Id : Sensor's Id set by the jumpers (Integer)
     io:format("=================================================================================================~n"),
     io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),
-    case find_other_sensor() of
-        ok ->
-            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-            {ok, Angle_Pid} = hera:start_measure(target_angle, []),
-            persistent_term:put(sonar_sensor, Sonar_Pid),
-            persistent_term:put(target_angle, Angle_Pid);            
-        _ -> 
-            {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-            persistent_term:put(sonar_sensor, Sonar_Pid)
-    end,    
+    find_other_sensor(),
+    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
+    persistent_term:put(sonar_sensor, Sonar_Pid),
            
-    %{ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-    
     %persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
-    loop(Id).
+    loop_run(Id).
 
 resolve_handshake(Id, OPriority, OTimeClock) ->
     % Sends a message with the informations concerning the sensors role definition
@@ -269,11 +278,11 @@ resolve_handshake(Id, OPriority, OTimeClock) ->
     case Pid of
         none ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
-            loop(Id);
+            loop_run(Id);
         _ ->
             %io:format("[SENSOR] Sending handshake informations~n"),
             Pid ! {handshake, list_to_integer(OPriority), list_to_integer(OTimeClock)},
-            loop(Id)
+            loop_run(Id)
     end.
 
 end_handshake(Id)->
@@ -283,19 +292,17 @@ end_handshake(Id)->
     case Pid of
         none -> 
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
-            loop(Id);
+            loop_run(Id);
         _ ->
             %io:format("[SENSOR] Sending handshake ok~n"),
             Pid ! {ok, role},
-            loop(Id)
+            loop_run(Id)
     end.
 
 reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
     exit_measure_module(sonar_sensor),
-    exit_measure_module(target_angle),
-    %exit_measure_module(kalman_measure),
 
     timer:sleep(500),
     reset_data(),
@@ -304,7 +311,7 @@ reset_state(Id) ->
 
     discover_server(Id),            
     io:format("[SENSOR] Waiting for start signal ...~n~n"),
-    loop(Id).
+    loop_config(Id).
 
 reset_data() ->
     % Delete all config dependent and hera_measures data

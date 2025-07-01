@@ -7,14 +7,15 @@ import time
 
 class Server:
 
-    HOST = '172.20.10.8'
     PORT = 5000
     buffer = []
     sensors = {}
     room_edges = []
     started = False
 
-    def __init__(self):
+    def __init__(self, IP, BRD_IP):
+        self.HOST = IP
+        self.BRD_IP = BRD_IP
         self.robot = Robot()
         self.rcvServer = threading.Thread(target=self.rcv_server, daemon=True)
         self.rcvServer.start()
@@ -153,11 +154,10 @@ class Server:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as srv_socket:
             srv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-            broadcast_ip = '172.20.10.15'
             port = 9000            
-            srv_socket.sendto(message.encode(), (broadcast_ip, port))
+            srv_socket.sendto(message.encode(), (self.BRD_IP, port))
             if message[:4] != "ping":
-                print(f"[SERVER] Broadcasted to ({broadcast_ip}, {port}): {message}")
+                print(f"[SERVER] Broadcasted to ({self.BRD_IP}, {port}): {message}")
 
     def uni_server(self, message, id):
         # Sends a unicast message to the specified device
@@ -200,8 +200,11 @@ class Server:
             self.send_robot_info()
         
             time.sleep(1)
-            message = "Start " + self.HOST
-            self.send(message, "brd")
+            for i in range(4):
+                message = "Start " + self.HOST
+                self.send(message, "brd")
+                time.sleep(0.5)                
+                
         else :
             self.send("Exit", "brd")
 

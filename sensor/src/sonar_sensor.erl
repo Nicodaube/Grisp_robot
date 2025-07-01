@@ -4,8 +4,11 @@
 
 -define(ROBOT_HEIGHT, 23).
 -define(MEASURE_ACCEPTABLE_RANGE, 10).
--define(TIMESLOT_SIZE, 300).
--define(MIN_MEASURE_PERIOD, ?TIMESLOT_SIZE/2).
+-define(TIMESLOT_SIZE, 450).
+-define(MEASURING_SLOT, 50).
+-define(TIMEOUT, 45).
+-define(SMOOTHING_FACTOR, 0.3).
+-define(MAX_MEASURE_INTERVAL, ?TIMESLOT_SIZE).
 
 -export([init/1, measure/1]).
 
@@ -24,7 +27,7 @@ init(_Args) ->
     {ok, State, #{
         name => sonar_sensor,
         iter => infinity,
-        timeout => 20
+        timeout => ?TIMEOUT
     }}.
     
 measure(State) ->    
@@ -34,9 +37,9 @@ measure(State) ->
         {master, TimeClock, _} ->
             Phase = get_phase(TimeClock, Current_time),
             if 
-                Phase >= ?TIMESLOT_SIZE-25 ->
+                Phase >= ?TIMESLOT_SIZE-(?MEASURING_SLOT/2) ->
                     get_measure(State, SensorName);
-                Phase < 25 ->
+                Phase < ?MEASURING_SLOT/2 ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -44,7 +47,7 @@ measure(State) ->
         {slave, TimeClock, Offset} ->
             Phase = get_phase(TimeClock, Current_time, Offset),
             if 
-                Phase >= (?TIMESLOT_SIZE/2)-25, Phase < (?TIMESLOT_SIZE/2)+25 ->
+                Phase >= (?TIMESLOT_SIZE/2)-(?MEASURING_SLOT/2), Phase < (?TIMESLOT_SIZE/2)+(?MEASURING_SLOT/2) ->
                     get_measure(State, SensorName);
                 true ->
                     {undefined, State}
@@ -172,25 +175,33 @@ check_measure_range(Ground_measure, State, SensorName) ->
     if
         Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE -> 
             % Only keep the measure if it is within MEASURE_ACCEPTABLE_RANGE of the last measure or if there was no measure for MIN_MEASURE_PERIOD
-            accept_measure(Ground_measure, SensorName, Current_timestamp, Seq);
-        Current_timestamp - Timestamp > ?MIN_MEASURE_PERIOD ->
-            accept_measure(Ground_measure, SensorName, Current_timestamp, Seq);        
+            accept_measure(Last_measure, Ground_measure, SensorName, Current_timestamp, Seq);
+        Current_timestamp - Timestamp > ?MAX_MEASURE_INTERVAL ->
+            accept_measure(Last_measure, Ground_measure, SensorName, Current_timestamp, Seq);        
         true ->
             io:format("[SONAR_SENSOR] ground distance exceeds the acceptable range by ~p~n", [abs(Last_measure - Ground_measure) - ?MEASURE_ACCEPTABLE_RANGE]),
             {undefined, State}
 end.
 
-accept_measure(Ground_measure, SensorName, Current_timestamp, Seq) ->
-    %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
-    hera_com:send_unicast(server, "Distance,"++float_to_list(Ground_measure)++","++atom_to_list(SensorName), "UTF8"),
+accept_measure(Last_measure, Ground_measure, SensorName, Current_timestamp, Seq) ->
+    %Smooth data to reduce noise
+    case Last_measure of
+        none ->
+            New_measure = Ground_measure;
+        _ ->
+            New_measure = ?SMOOTHING_FACTOR * Last_measure + (1-?SMOOTHING_FACTOR) * Ground_measure           
+    end,
 
-    hera_data:store(distance, SensorName, Seq, [Ground_measure]),
+    %io:format("[SONAR_SENSOR] ground distance to robot : ~p : ~p~n", [Seq, True_measure]),
+    hera_com:send_unicast(server, "Distance,"++float_to_list(New_measure)++","++atom_to_list(SensorName), "UTF8"),
+
+    hera_data:store(distance, SensorName, Seq, [New_measure]),
     NewState = #{
         seq => Seq + 1,
-        last_measure => Ground_measure,
+        last_measure => New_measure,
         timestamp => Current_timestamp
     },
-    {ok, [Ground_measure], distance, SensorName, NewState}.
+    {ok, [New_measure], distance, SensorName, NewState}.
 
 
 %============================================================================================================================================
