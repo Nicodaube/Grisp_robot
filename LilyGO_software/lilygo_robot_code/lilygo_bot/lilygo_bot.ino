@@ -2,6 +2,7 @@
 #include <LoRa.h>
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
 
 #include "motor_engine.h"
 
@@ -24,6 +25,10 @@
 #define max_turn_speed 80
 #define turn_acc 400 
 
+const char* ssid = "RobotNet";
+const char* password = "oui123456";
+
+WiFiServer server(80);
 
 float I2C_command[2] = {0.0, 0.0}; // value received from GRiSP : {wheels acceleration , turn speed}
 
@@ -53,27 +58,16 @@ bool disturb = false;
 bool ext_end = true;
 
 
-
 void setup() {
   Serial.begin(115200);
-  // SPI - LoRa init
-  SPI.begin(CONFIG_CLK, CONFIG_MISO, CONFIG_MOSI, CONFIG_NSS);
-  LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
-  if (!LoRa.begin(BAND)) {
-    Serial.println("Starting LoRa failed!");
-    while (1);
-  }
 
-  // I2C Slave init, work with IRQ so no need to incorporate into the main loop
-  Wire.begin(I2C_SLAVE_ADDR);
-  Wire.onReceive(GRiSP_receiver);
-  Wire.onRequest(GRiSP_sender);
+  setup_wifi();
 
-  // motor init, works on core n°2
-  engine_init();
-  delay(1000);
-  set_speed(0, 0);
-  set_acceleration(0, 0);
+  setup_LoRa();
+
+  setup_I2C_slave();
+
+  setup_motor();
 
   // time init
   t_GRiSP = millis();
@@ -91,7 +85,42 @@ void loop() {
   delay(1);
 }
 
+void setup_wifi(){
+  Serial.println("[ROBOT] RobotAP setting up ...");
+  WiFi.softAP(ssid, password);
 
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("[ROBOT] AP IP address : ");
+  Serial.println(IP);
+  server.begin();
+  Serial.println("[ROBOT] RobotAP ready !");
+}
+
+void setup_LoRa(){
+  Serial.println("[ROBOT] LoRa setting up ...");
+  SPI.begin(CONFIG_CLK, CONFIG_MISO, CONFIG_MOSI, CONFIG_NSS);
+  LoRa.setPins(CONFIG_NSS, CONFIG_RST, CONFIG_DIO0);
+  if (!LoRa.begin(BAND)) {
+    Serial.println("[ROBOT] Starting LoRa failed!");
+    while (1);
+  }
+  Serial.println("[ROBOT] LoRa Ready !");
+}
+
+void setup_I2C_slave(){
+  // I2C Slave init, work with IRQ so no need to incorporate into the main loop
+  Wire.begin(I2C_SLAVE_ADDR);
+  Wire.onReceive(GRiSP_receiver);
+  Wire.onRequest(GRiSP_sender);
+}
+
+void setup_motor(){
+  // motor init, works on core n°2
+  engine_init();
+  delay(1000);
+  set_speed(0, 0);
+  set_acceleration(0, 0);
+}
 
 void GRiSP_receiver(int howMany) {
   if(howMany == 5){ // check if the packet match the expected lenght
@@ -150,8 +179,7 @@ void GRiSP_receiver(int howMany) {
   }
 }
 
-void GRiSP_sender() 
-{ 
+void GRiSP_sender() { 
   byte v[5];
   float* speeds = get_speed();
   encoder(v, speeds[0]);
@@ -194,7 +222,7 @@ void encoder(byte* res, double X){
 }
 
 void LoRa_receiver(){
-// receiption of LoRa packets
+  // receiption of LoRa packets
   if (LoRa.parsePacket()) {
     if(LoRa.available()>=2){
       byte cmd1 = LoRa.read();
@@ -203,6 +231,8 @@ void LoRa_receiver(){
         cmd = cmd1;
         new_cmd = true;
       }
+      Serial.println(cmd1);
+      Serial.println(cmd2);
     }
     while (LoRa.available()){
       LoRa.read();
