@@ -10,14 +10,14 @@
 -define(VAR_P, 0.01). % pour la position
 -define(VAR_Q, 0.01). %pour theta
 -define(VAR_V, 0.01).
--define(VAR_A, 0.1). % pour l'acceleration
+% pour l'acceleration
 
 %%%% fiabilité capteur %%%%
 % plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.001). % pour le sonar x et y
+-define(VAR_S, 0.01). % pour le sonar x et y
 -define(VAR_R, 0.1). % gyroscope
 -define(VAR_VM, 0.001). % vitesse
--define(VAR_AM, 0.1). % accélération
+
 
 
 -define(BETA, 0.07).
@@ -26,11 +26,12 @@ init(_Args) ->
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
     persistent_term:put(ahrs_quat, [1,0,0,0]),
     persistent_term:put(acc_proj_filtered,0.0),
+    calibrate(),
     calibrate_speed(),
     State = #{
         t0 => erlang:system_time()/1.0e6,
-        x_pos => mat:zeros(5, 1),
-        p_pos => mat:eye(5),
+        x_pos => mat:zeros(4, 1),
+        p_pos => mat:eye(4),
         yaw => mat:eye(1),
         seq => 2
     },
@@ -91,46 +92,46 @@ measure(State) ->
             
             io:format("X = ~p, Y = ~p theta = ~p, Vitesse = ~p, Accel = ~p~n", [X_mes,Y_mes,Theta_mes,V_mes,Acc_proj_filtered]),
 
-            Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes] ,[V_mes], [Acc_proj_filtered]]),
+            Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes] ,[V_mes]]),
 
             % Matrices de bruit
             %%%%%% Faire varier Q et R pour voir si ça change %%%%%%%%%%
-            Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q, ?VAR_V, ?VAR_A]),
-            R = mat:diag([?VAR_S, ?VAR_S, ?VAR_R, ?VAR_VM, ?VAR_AM]),
+            Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q, ?VAR_V]),
+            R = mat:diag([?VAR_S, ?VAR_S, ?VAR_R, ?VAR_VM]),
 
             % Fonction de transition f(x)
             
 
             F = fun(X) ->
                 [Xc, Yc, Th, V, A] = mat:to_array(X),
-                Vn = V + A * Dt,
                 Thn = Th + Omega * Dt,
-                Xp = Xc + Vn * math:cos(Thn) * Dt,
-                Yp = Yc + Vn * math:sin(Thn) * Dt,
-                mat:matrix([[Xp], [Yp], [Thn], [Vn], [A]])
+                
+                Xp = Xc + V * math:cos(Thn) * Dt,
+                Yp = Yc + V * math:sin(Thn) * Dt,
+                mat:matrix([[Xp], [Yp], [Thn], [V]])
             end,
             
             % Jacobienne de f
             Jf = fun(X) ->
-                [_, _, Th, V, A] = mat:to_array(X),
-                Vn = V + A * Dt,
+                [_, _, Th, V] = mat:to_array(X),
+
                 mat:matrix([
-                    [1, 0, -Vn * math:sin(Th) * Dt, math:cos(Th) * Dt, math:cos(Th) * Dt * Dt],
-                    [0, 1,  Vn * math:cos(Th) * Dt, math:sin(Th) * Dt, math:sin(Th) * Dt * Dt],
-                    [0, 0, 1, 0, 0],
-                    [0, 0, 0, 1, Dt],
-                    [0, 0, 0, 0, 1]
+                    [1, 0, -V * math:sin(Th) * Dt, math:cos(Th) * Dt],
+                    [0, 1,  V * math:cos(Th) * Dt, math:sin(Th) * Dt],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1]
                 ])
             end,
+            
             
 
             
             % Fonction de mesure h(x) = x
             H = fun(X) -> X end,
-            Jh = fun(_) -> mat:eye(5) end,
+            Jh = fun(_) -> mat:eye(4) end,
 
             {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
-            [Xf, Yf, Thetaf, _V, _Af] = mat:to_array(Xnew),
+            [Xf, Yf, Thetaf, _V] = mat:to_array(Xnew),
 
             %Y = mat:'-'(Z, H(Xf)),
             %ErrorNorm = norm(mat:to_array(Y)),  
@@ -160,7 +161,36 @@ measure(State) ->
 %======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
 
-  
+calibrate() ->
+    N=500,
+    Gyro_data = [ pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])
+                || _ <- lists:seq(1, N) ],
+
+    G_x_List = [ X || [X,_,_] <- Gyro_data ],
+    G_y_List = [ Y || [_,Y,_] <- Gyro_data ],
+    G_z_List = [ Z || [_,_,Z] <- Gyro_data ],
+
+    AngVel_data = [pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]) || _ <- lists:seq(1, N)],
+
+    M_x_List = [ X || [X,_,_] <- AngVel_data ],
+    M_y_List = [ Y || [_,Y,_] <- AngVel_data ],
+    M_z_List = [ Z || [_,_,Z] <- AngVel_data ],
+
+    Acc_data = [ pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]) || _ <- lists:seq(1, N) ],
+
+    Accc_x_List = [ X || [X,_,_] <- Acc_data ],
+    Accc_y_List = [ Y || [_,Y,_] <- Acc_data ],
+    Accc_z_List = [ Z || [_,_,Z] <- Acc_data ],
+
+    [Gx0_pos, Gy0_pos, Gz0_pos] = [lists:sum(List) / N || List <- [G_x_List, G_y_List, G_z_List]],
+    [Mx0, My0, Mz0] = [lists:sum(List) / N || List <- [M_x_List, M_y_List, M_z_List]],
+    [Accx0, Accy0, Accz0] = [lists:sum(List) / N || List <- [Accc_x_List, Accc_y_List, Accc_z_List]],
+    io:format("[KALMAN_MEASURE] Done calibrating~n"),
+
+    persistent_term:put(gyro_init, {Gx0_pos, Gy0_pos, Gz0_pos}),
+    persistent_term:put(mag_init, {Mx0, My0, Mz0}),
+    persistent_term:put(acc_init, {Accx0, Accy0, Accz0}).
+
 calibrate_speed() ->
     I2Cbus = persistent_term:get(i2c),
     N = 10,
@@ -286,20 +316,17 @@ get_val_nav(Dt) ->
     {Ax0, Ay0, Az0} = persistent_term:get(acc_init),
     Acc = scale([Ax - Ax0, Ay - Ay0, Az - Az0], 9.81),
     
-    io:format("[DEBUG AHRS] Acc x : ~p  Acc y : ~p Acc x : ~p~n", [Ax0,Ay0,-Az0]),
-
-
+    
     {GBx, GBy, GBz} = persistent_term:get(gyro_init),
     Gyro = scale([Gx-GBx,Gy-GBy,-(Gz-GBz)],math:pi()/180),
 
     {MBx,MBy,MBz} = persistent_term:get(mag_init),
-    Mag = mat:matrix([[-(Mx-MBx),My-MBy,-(Mz-MBz)]]),
-
+    Mag = mat:matrix([[Mx-MBx,My-MBy,Mz-MBz]]),
 
 
     %R0 = ahrs([Ax,Ay,-Az], [-(Mx-MBx),My-MBy,-(Mz-MBz)]),
     Quat0 = persistent_term:get(ahrs_quat),
-    Quat1 = update(Gyro, Acc, Dt, Quat0),
+    Quat1 = update(Gyro, Acc, mat:to_array(Mag),Dt, Quat0),
     Quat1_norm = normalize(Quat1),
     R0 = quat_to_matrix(Quat1_norm),
     
@@ -308,11 +335,7 @@ get_val_nav(Dt) ->
     RotAcc = mat:'-'(AccRot, mat:matrix([[0, 0, 9.81]])),  % compensation gravité
     
     R0t = mat:tr(R0),
-    io:format("[DEBUG AHRS] Acc        = ~p~n", [Acc]),
-    io:format("[DEBUG AHRS] R0         = ~p~n", [mat:to_array(R0t)]),
-    io:format("[DEBUG AHRS] AccRot     = ~p~n", [mat:to_array(AccRot)]),
-    io:format("[DEBUG AHRS] RotAcc     = ~p~n", [mat:to_array(RotAcc)]),
-    io:format("[DEBUG AHRS] Quat       = ~p~n", [Quat1]),
+
 
     {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0t}. 
 cross_product([U1,U2,U3], [V1,V2,V3]) -> 
@@ -343,30 +366,35 @@ i2c_read() ->
 
 
 
-update([Gx, Gy, Gz], [Ax, Ay, Az], Dt, [Q0, Q1, Q2, Q3]) ->
-    %% Normalize accelerometer
-    NormAcc = normalize([Ax, Ay, Az]),
-    [Axn, Ayn, Azn] = NormAcc,
+update([Gx, Gy, Gz], [Ax, Ay, Az], [Mx, My, Mz], Dt, [Q0, Q1, Q2, Q3]) ->
+    %% Normalize sensor inputs
+    Acc = normalize([Ax, Ay, Az]),
+    Mag = normalize([Mx, My, Mz]),
+    [Axn, Ayn, Azn] = Acc,
+    [Mxn, Myn, Mzn] = Mag,
 
-    %% Gradient descent step (simplified)
+    %% Reference direction of Earth's magnetic field (based on current quaternion)
+    R = mat:tr(quat_to_matrix([Q0, Q1, Q2, Q3])),
+    H = mat:'*'(mat:matrix([Mag]), R),
+    [Hx, Hy, _Hz] = mat:to_array(H),
+
+    %% Error vector (acc + mag fusion)
     F1 = 2*(Q1*Q3 - Q0*Q2) - Axn,
     F2 = 2*(Q0*Q1 + Q2*Q3) - Ayn,
     F3 = 2*(0.5 - Q1*Q1 - Q2*Q2) - Azn,
+    F4 = Hx - 1.0,
+    F5 = Hy,
 
-    J_11or24 = 2*Q2,
-    J_12or23 = 2*Q3,
-    J_13or22 = 2*Q0,
-    J_14or21 = 2*Q1,
-
-    Grad0 = J_14or21*F2 - J_12or23*F1,
-    Grad1 = J_13or22*F1 + J_11or24*F3,
-    Grad2 = J_11or24*F1 - J_13or22*F2,
-    Grad3 = J_12or23*F3 - J_14or21*F3,
+    %% Gradient descent step
+    Grad0 = -F1*Q2 + F2*Q1,
+    Grad1 = F1*Q3 + F2*Q0 - 4*Q1*F3,
+    Grad2 = -F1*Q0 + F2*Q3 - 4*Q2*F3,
+    Grad3 = F1*Q1 + F2*Q2,
 
     GradNorm = normalize([Grad0, Grad1, Grad2, Grad3]),
     [G0, G1, G2, G3] = GradNorm,
 
-    %% Rate of change of quaternion
+    %% Quaternion rate of change
     QDot0 = 0.5 * (-Q1*Gx - Q2*Gy - Q3*Gz) - ?BETA * G0,
     QDot1 = 0.5 * ( Q0*Gx + Q2*Gz - Q3*Gy) - ?BETA * G1,
     QDot2 = 0.5 * ( Q0*Gy - Q1*Gz + Q3*Gx) - ?BETA * G2,
@@ -379,6 +407,7 @@ update([Gx, Gy, Gz], [Ax, Ay, Az], Dt, [Q0, Q1, Q2, Q3]) ->
     Q3n = Q3 + QDot3 * Dt,
 
     normalize([Q0n, Q1n, Q2n, Q3n]).
+
 
 %% Converts a unit quaternion [w,x,y,z] into a rotation matrix R0 (3x3)
 quat_to_matrix([W, X, Y, Z]) ->
