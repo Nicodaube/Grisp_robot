@@ -3,12 +3,12 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(MEASURE_ACCEPTABLE_RANGE, 10).
--define(TIMESLOT_SIZE, 450).
+-define(MEASURE_ACCEPTABLE_RANGE, 25).
+-define(TIMESLOT_SIZE, 150).
 -define(MEASURING_SLOT, 50).
--define(TIMEOUT, 45).
--define(SMOOTHING_FACTOR, 0.3).
--define(MAX_MEASURE_INTERVAL, ?TIMESLOT_SIZE).
+-define(TIMEOUT, 25).
+-define(SMOOTHING_FACTOR, 0).
+-define(MAX_MEASURE_INTERVAL, ?TIMESLOT_SIZE*2).
 
 -export([init/1, measure/1]).
 
@@ -17,10 +17,15 @@
 %============================================================================================================================================
 
 init(_Args) ->
-    io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     get_sensor_role(),
+    timer:sleep(3000),
+    io:format("~n[SONAR_SENSOR] Starting measurements~n"),
+    Role = persistent_term:get(sensor_role),
+    Clock = persistent_term:get(sonar_clock),
     State = #{
         seq => get_init_seq(),
+        role => Role,
+        clock => Clock,
         last_measure => none,
         timestamp => none
     },
@@ -30,12 +35,20 @@ init(_Args) ->
         timeout => ?TIMEOUT
     }}.
     
-measure(State) ->    
+measure(State) ->  
+    #{
+        seq := _,
+        role := Role,
+        clock := {Clock, Offset},
+        last_measure := _,
+        timestamp := _
+    } = State,
+
     SensorName = persistent_term:get(sensor_name),
-    Current_time = erlang:system_time(millisecond),
-    case persistent_term:get(sensor_role) of
-        {master, TimeClock, _} ->
-            Phase = get_phase(TimeClock, Current_time),
+    Current_time = erlang:system_time(millisecond),    
+    Phase = get_phase(Clock, Current_time, Offset),
+    case Role of
+        master ->
             if 
                 Phase >= ?TIMESLOT_SIZE-(?MEASURING_SLOT/2) ->
                     get_measure(State, SensorName);
@@ -44,8 +57,7 @@ measure(State) ->
                 true ->
                     {undefined, State}
             end;
-        {slave, TimeClock, Offset} ->
-            Phase = get_phase(TimeClock, Current_time, Offset),
+        slave ->
             if 
                 Phase >= (?TIMESLOT_SIZE/2)-(?MEASURING_SLOT/2), Phase < (?TIMESLOT_SIZE/2)+(?MEASURING_SLOT/2) ->
                     get_measure(State, SensorName);
@@ -63,8 +75,7 @@ get_sensor_role() ->
     case persistent_term:get(osensor, none) of
         none -> % Is alone in a room
             io:format("[SONAR_SENSOR] No other sensor, sensor is master~n"),
-            TimeClock = erlang:system_time(millisecond),
-            persistent_term:put(sensor_role, {master, TimeClock, 0});                     
+            persistent_term:put(sensor_role, master);                     
         Osensor -> % Start Handshake
             case persistent_term:get(sensor_role, none) of
                 none -> % Classical sensor bootstrap
@@ -86,11 +97,13 @@ role_handshake(Osensor, Priority, TimeClock) ->
                 Priority > OPriority ->
                     io:format("[SONAR_SENSOR] Local priority higher, sensor role : MASTER~n"),                    
                     wait_ack(Osensor),
-                    persistent_term:put(sensor_role, {master, TimeClock, OTimeClock - TimeClock});
+                    persistent_term:put(sonar_clock, {TimeClock, 0}),
+                    persistent_term:put(sensor_role, master);
                 Priority < OPriority ->
                     io:format("[SONAR_SENSOR] External priority higher, sensor role : SLAVE~n"),                    
-                    wait_ack(Osensor),                  
-                    persistent_term:put(sensor_role, {slave, OTimeClock, OTimeClock - TimeClock});
+                    wait_ack(Osensor),
+                    persistent_term:put(sonar_clock, {OTimeClock, TimeClock - OTimeClock}),
+                    persistent_term:put(sensor_role, slave);
                 true ->
                     io:format("[SONAR_SENSOR] Priority collision, retrying~n"),
                     {ok, New_Priority} = get_rand_num(),
@@ -167,11 +180,14 @@ check_measure_range(Ground_measure, State, SensorName) ->
     % @param SensorName : the name of the current sensor (atom)
     #{
         seq := Seq,
+        role := _,
+        clock := _,
         last_measure := Last_measure,
         timestamp := Timestamp
     } = State,
 
     Current_timestamp = hera:timestamp(),
+
     if
         Last_measure == none orelse abs(Last_measure - Ground_measure) < ?MEASURE_ACCEPTABLE_RANGE -> 
             % Only keep the measure if it is within MEASURE_ACCEPTABLE_RANGE of the last measure or if there was no measure for MIN_MEASURE_PERIOD
@@ -198,6 +214,8 @@ accept_measure(Last_measure, Ground_measure, SensorName, Current_timestamp, Seq)
     hera_data:store(distance, SensorName, Seq, [New_measure]),
     NewState = #{
         seq => Seq + 1,
+        role => persistent_term:get(sensor_role),
+        clock => persistent_term:get(sonar_clock),
         last_measure => New_measure,
         timestamp => Current_timestamp
     },
@@ -220,15 +238,7 @@ get_rand_num() ->
     persistent_term:get(id),
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
-    {ok, rand:uniform(3000)}.   
-
-get_phase(Start, Now) ->
-    Phase0 = (Now - Start) rem ?TIMESLOT_SIZE,
-    Phase = if
-        Phase0 < 0 -> Phase0 + ?TIMESLOT_SIZE;
-        true      -> Phase0
-    end,
-    Phase.
+    {ok, rand:uniform(3000)}.
 
 get_phase(Start, Now, Offset) ->
     Phase0 = (Now + Offset - Start) rem ?TIMESLOT_SIZE,
