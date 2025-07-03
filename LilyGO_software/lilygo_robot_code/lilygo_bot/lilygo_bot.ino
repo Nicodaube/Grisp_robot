@@ -87,7 +87,7 @@ void loop() {
 
 void setup_wifi(){
   Serial.println("[ROBOT] RobotAP setting up ...");
-  WiFi.softAP(ssid, password);
+  WiFi.softAP(ssid, password, 1, false, 8);
 
   IPAddress IP = WiFi.softAPIP();
   Serial.print("[ROBOT] AP IP address : ");
