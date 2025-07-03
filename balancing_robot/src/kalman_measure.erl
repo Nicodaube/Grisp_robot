@@ -7,19 +7,15 @@
 %%%% incertitude dynamique %%%%
 % plus la valeur est grande, moins tu fais confiance à ton modèle %
 
--define(VAR_P, 0.01). % pour la position
--define(VAR_Q, 0.01). %pour theta
--define(VAR_V, 0.01).
-% pour l'acceleration
+-define(VAR_P, 0.1). % pour la position
+-define(VAR_Q, 0.005). %pour theta
 
 %%%% fiabilité capteur %%%%
 % plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.01). % pour le sonar x et y
--define(VAR_R, 0.1). % gyroscope
--define(VAR_VM, 0.001). % vitesse
+-define(VAR_S, 0.05). % pour le sonar x et y
+-define(VAR_R, 0.01). % gyroscope
 
-
-
+-define(RAD_TO_DEG, 180.0/math:pi()).
 -define(BETA, 0.07).
 init(_Args) ->
     timer:sleep(2000),
@@ -28,10 +24,11 @@ init(_Args) ->
     persistent_term:put(acc_proj_filtered,0.0),
     calibrate(),
     calibrate_speed(),
+
     State = #{
         t0 => erlang:system_time()/1.0e6,
-        x_pos => mat:zeros(4, 1),
-        p_pos => mat:eye(4),
+        x_pos => mat:zeros(3, 1),
+        p_pos => mat:diag([10,10,10]),
         yaw => mat:eye(1),
         seq => 2
     },
@@ -55,32 +52,28 @@ measure(State) ->
         [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
             T1 = erlang:system_time()/1.0e6,
             Dt = (T1 - T0) / 1000.0,
-            io:format("X = ~p~n",[Dt]),
 
             {V_mes_mm,_} = i2c_read(),
             V_mes = V_mes_mm / 100,
-            {Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
-            [_,_,Omega] = mat:to_array(Gyro),
-            [Acc_mes_x,Acc_mes_y,_Acc_mes_z] = mat:to_array(Acc),
+            {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
+            [Omega,_,_] = mat:to_array(Gyro),
+
             
             % Estimation theta obsolue %
-            {_,_,Theta_mes} = quat_to_euler(persistent_term:get(ahrs_quat)),
+            Quat = persistent_term:get(ahrs_quat),
+            R1 = quat_to_matrix(Quat),
+            % On prend la 2e et 3e colonne du repère pour projeter dans le plan YZ
+            [ _R11, _R12, R13,
+            _R21, _R22, R23,
+            _R31, _R32, R33 ] = mat:to_array(R1),
+            Col3 = [R13, R23, R33],
 
-            Acc_proj = Acc_mes_x * math:cos(Theta_mes) + Acc_mes_y * math:sin(Theta_mes),
-            Alpha = 0.2,  % Coefficient du filtre, entre 0 et 1 (0.1 à 0.3 recommandé)
-
-            % Récupérer la dernière valeur filtrée ou 0.0 par défau
-            Last = case persistent_term:get(acc_proj_filtered, undefined) of
-                undefined -> 0.0;
-                Val -> Val
-            end,
-
-            Acc_proj_filtered = Alpha * Acc_proj + (1 - Alpha) * Last,
-
-            % Stocker la nouvelle valeur filtrée
-            persistent_term:put(acc_proj_filtered, Acc_proj_filtered),
+            [_, Y2, Z2] = Col3,
+            % On calcule la direction du vecteur "avant" projetée dans YZ
+            DirY = Y2,
+            DirZ =  Z2,
+            Theta_mes = math:atan2(DirY, DirZ),
             
-
             {X_mes,Y_mes} = case get_new_robot_pos(OldRoom) of
                 no_intersection -> 
                     {0.0,0.0};
@@ -90,55 +83,57 @@ measure(State) ->
 
             %%% check  pour voir si les valeurs sont cohérente %%%
             
-            io:format("X = ~p, Y = ~p theta = ~p, Vitesse = ~p, Accel = ~p~n", [X_mes,Y_mes,Theta_mes,V_mes,Acc_proj_filtered]),
+            io:format("X = ~p, Y = ~p theta = ~p, Vitesse =  ~p~n", [X_mes,Y_mes,Theta_mes,V_mes]),
 
-            Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes] ,[V_mes]]),
+            Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
 
             % Matrices de bruit
             %%%%%% Faire varier Q et R pour voir si ça change %%%%%%%%%%
-            Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q, ?VAR_V]),
-            R = mat:diag([?VAR_S, ?VAR_S, ?VAR_R, ?VAR_VM]),
+            Q  = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q]),
+            R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
 
             % Fonction de transition f(x)
             
 
             F = fun(X) ->
-                [Xc, Yc, Th, V, A] = mat:to_array(X),
-                Thn = Th + Omega * Dt,
-                
-                Xp = Xc + V * math:cos(Thn) * Dt,
-                Yp = Yc + V * math:sin(Thn) * Dt,
-                mat:matrix([[Xp], [Yp], [Thn], [V]])
+                [Xc, Yc, Thetac] = mat:to_array(X),
+                Theta_next = Thetac + Omega * Dt,
+                Xp = Xc + V_mes * math:cos(Theta_next) * Dt,
+                Yp = Yc + V_mes * math:sin(Theta_next) * Dt,
+                mat:matrix([[Xp], [Yp], [Theta_next]])
             end,
             
             % Jacobienne de f
             Jf = fun(X) ->
-                [_, _, Th, V] = mat:to_array(X),
-
+                [_,_,Th] = mat:to_array(X),
+                Thnn = Th + Omega * Dt,
                 mat:matrix([
-                    [1, 0, -V * math:sin(Th) * Dt, math:cos(Th) * Dt],
-                    [0, 1,  V * math:cos(Th) * Dt, math:sin(Th) * Dt],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1]
+                    [1, 0, -V_mes * math:sin(Thnn) * Dt],
+                    [0, 1,  V_mes * math:cos(Thnn) * Dt],
+                    [0, 0, 1]  
                 ])
             end,
-            
             
 
             
             % Fonction de mesure h(x) = x
             H = fun(X) -> X end,
-            Jh = fun(_) -> mat:eye(4) end,
+            Jh = fun(_) -> mat:eye(3) end,
 
             {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
-            [Xf, Yf, Thetaf, _V] = mat:to_array(Xnew),
+            Y = mat:'-'(Z, H(Xnew)),
+            ErrorNorm = math:sqrt(lists:sum([E*E || E <- mat:to_array(Y)])),
+            
+
+            io:format("Innovation Norm = ~p~n", [ErrorNorm]),
+            [Xf, Yf, Thetaf] = mat:to_array(Xnew),
 
             %Y = mat:'-'(Z, H(Xf)),
             %ErrorNorm = norm(mat:to_array(Y)),  
 
             %io:format("ErrorNorm = ~p~n", [ErrorNorm]),
 
-                    
+            ThetaDegrees = Thetaf * ?RAD_TO_DEG,
 
             NewState = #{ 
                 t0   => T1,
@@ -151,10 +146,12 @@ measure(State) ->
             %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
-            hera_data:store(robot_pos, robot, Seq, [Xf, Yf, Thetaf, OldRoom]),
-            send_robot_pos([Xf, Yf, Thetaf, OldRoom]),
+            hera_data:store(robot_pos, robot, Seq, [Xf, Yf, ThetaDegrees, OldRoom]),
+            send_robot_pos([Xf, Yf, ThetaDegrees, OldRoom]),
 
-            {ok, [Xf,Yf, Thetaf, OldRoom], robot_pos, robot, NewState}
+            {ok, [Xf,Yf, ThetaDegrees, OldRoom], robot_pos, robot, NewState};
+        [] ->
+            {undefined, State}
     
     end.               
 %============================================================================================================================================
@@ -300,14 +297,6 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
     end.
 
 
-ahrs(Acc, Mag) ->
-    Down = unit([-A || A <- Acc]),
-    East = unit(cross_product2(Down, unit(Mag))),
-    North = unit(cross_product(East, Down)),
-    mat:tr(mat:matrix([North, East, Down])).
-
-
-
 get_val_nav(Dt) ->
     [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
     [Gx, Gy, Gz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]),
@@ -338,19 +327,17 @@ get_val_nav(Dt) ->
 
 
     {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0t}. 
-cross_product([U1,U2,U3], [V1,V2,V3]) -> 
-    [U2*V3-U3*V2, U3*V1-U1*V3, U1*V2-U2*V1].
-cross_product2([U1,U2,U3], [_V1,_V2,_V3]) -> 
-    [U2-U3, U3-U1, U1-U2].
-
 
 scale(List, Factor) ->
     [X*Factor || X <- List].
 
-unit(V) ->
-    Norm = math:sqrt(lists:sum([X*X || X <- V])),
-    [X/Norm || X <- V].
-
+scale_matrix(Matrix, Factor) ->
+    case mat:to_array(Matrix) of
+        [A, B, C] ->
+            mat:diag([A * Factor, B * Factor, C * Factor]);
+        _ ->
+            error(invalid_matrix)
+    end.
 i2c_read() ->
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
@@ -371,7 +358,7 @@ update([Gx, Gy, Gz], [Ax, Ay, Az], [Mx, My, Mz], Dt, [Q0, Q1, Q2, Q3]) ->
     Acc = normalize([Ax, Ay, Az]),
     Mag = normalize([Mx, My, Mz]),
     [Axn, Ayn, Azn] = Acc,
-    [Mxn, Myn, Mzn] = Mag,
+    [_Mxn, _Myn, _Mzn] = Mag,
 
     %% Reference direction of Earth's magnetic field (based on current quaternion)
     R = mat:tr(quat_to_matrix([Q0, Q1, Q2, Q3])),
