@@ -30,6 +30,8 @@ init(_Args) ->
         x_pos => mat:zeros(3, 1),
         p_pos => mat:diag([10,10,10]),
         yaw => mat:eye(1),
+        q_dyn => mat:diag([0.01, 0.01, 0.005]),
+        r_dyn => mat:diag([0.05, 0.05, 0.01]),
         seq => 2
     },
 
@@ -44,6 +46,8 @@ measure(State) ->
         t0   := T0,
         x_pos := Xpos,
         p_pos := Ppos,
+        q_dyn := Q_init,
+        r_dyn := R_init,
         seq  := Seq
         
     } = State,
@@ -89,8 +93,8 @@ measure(State) ->
 
             % Matrices de bruit
             %%%%%% Faire varier Q et R pour voir si ça change %%%%%%%%%%
-            Q  = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q]),
-            R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
+            Q  = Q_init,
+            R  = R_init,
 
             % Fonction de transition f(x)
             
@@ -123,9 +127,30 @@ measure(State) ->
             {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
             Y = mat:'-'(Z, H(Xnew)),
             ErrorNorm = math:sqrt(lists:sum([E*E || E <- mat:to_array(Y)])),
-            
+            % Ajustement adaptatif de Q et R
 
+
+            Qdyn = maps:get(q_dyn, State),
+            Rdyn = maps:get(r_dyn, State),
+
+            AdaptedQ =
+                case ErrorNorm of
+                    E when E > 0.2 -> scale_diag(Qdyn, 1.2);
+                    E when E < 0.05 -> scale_diag(Qdyn, 0.8);
+                    _ -> Qdyn
+                end,
+
+            AdaptedR =
+                case ErrorNorm of
+                    D when D > 0.2 -> scale_diag(Rdyn, 1.2);
+                    D when D < 0.05 -> scale_diag(Rdyn, 0.8);
+                    _ -> Rdyn
+                end,
             io:format("Innovation Norm = ~p~n", [ErrorNorm]),
+            io:format("Q shape: ~p~n", [mat:to_array(AdaptedQ)]),
+            io:format("R shape: ~p~n", [mat:to_array(AdaptedR)]),
+            io:format("Ppos shape: ~p~n", [mat:to_array(Ppos)]),
+
             [Xf, Yf, Thetaf] = mat:to_array(Xnew),
 
             %Y = mat:'-'(Z, H(Xf)),
@@ -139,6 +164,8 @@ measure(State) ->
                 t0   => T1,
                 x_pos => Xnew,
                 p_pos => Pnew,
+                q_dyn => AdaptedQ,
+                r_dyn  => AdaptedR,
                 seq  => Seq +1
             },
 
@@ -157,6 +184,10 @@ measure(State) ->
 %============================================================================================================================================
 %======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
+
+scale_diag(Matri,Factor) ->
+    Final = scale(mat:to_array(Matri), Factor),
+    mat:matrix([Final]).
 
 calibrate() ->
     N=500,
@@ -331,13 +362,7 @@ get_val_nav(Dt) ->
 scale(List, Factor) ->
     [X*Factor || X <- List].
 
-scale_matrix(Matrix, Factor) ->
-    case mat:to_array(Matrix) of
-        [A, B, C] ->
-            mat:diag([A * Factor, B * Factor, C * Factor]);
-        _ ->
-            error(invalid_matrix)
-    end.
+
 i2c_read() ->
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
