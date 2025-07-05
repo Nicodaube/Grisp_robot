@@ -29,10 +29,10 @@ init(_Args) ->
     persistent_term:put(ahrs_quat, [1,0,0,0]),
     calibrate(),
     calibrate_speed(),
-
+    
     %% Initial state: [x, y, θ, v, b_ω]
-    X0 = mat:matrix([[0],[0],[0],[0],[0]]),
-    P0 = mat:diag([10,10, 10, 10, 0.01]),
+    X0 = mat:matrix([[0],[0],[0],[0]]),
+    P0 = mat:diag([10,10, 10, 10]),
 
     State = #{
       t0    => erlang:system_time()/1.0e6,
@@ -64,21 +64,20 @@ measure(State) ->
         ?Q_P*Dt,
         ?Q_P*Dt,
         ?Q_TH*Dt,
-        ?Q_V*Dt,
-        ?Q_BW*Dt
+        ?Q_V*Dt
         ]),
 
         %% Define F and Jf for extended CTRV + bias model
         F = fun(X) ->
-            [Xc, Yc, Thc, Vc, Bwc] = mat:to_array(X),
-            Omega_corr = Omega - Bwc,
+            [Xc, Yc, Thc, Vc ] = mat:to_array(X),
+            Omega_corr = Omega,
             Acc_long = -Az,%Ax*math:cos(Thc) + Ay*math:sin(Thc),
             Vnext = Vc + Acc_long*Dt,
             Xn = Xc + Vc*math:cos(Thc)*Dt + 0.5*Acc_long*Dt*Dt,
             Yn = Yc + Vc*math:sin(Thc)*Dt + 0.5*Acc_long*Dt*Dt,
             Thn = Thc + Omega_corr*Dt,
-            Bwn = Bwc,
-            mat:matrix([[Xn],[Yn],[Thn],[Vnext],[Bwn]])
+            
+            mat:matrix([[Xn],[Yn],[Thn],[Vnext]])
         end,
 
         Jf = fun(X) ->
@@ -88,11 +87,11 @@ measure(State) ->
             DAdTh = 0,%-Ax*math:sin(Thc) + Ay*math:cos(Thc),
             % Jacobian 5x5
             mat:matrix([
-            [1, 0, -Vc*math:sin(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:cos(Thc)*Dt, 0],
-            [0, 1,  Vc*math:cos(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:sin(Thc)*Dt, 0],
-            [0, 0, 1,                               0,           -Dt],
-            [0, 0, DAdTh*Dt,                        1,            0],
-            [0, 0, 0,                               0,            1]
+            [1, 0, -Vc*math:sin(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:cos(Thc)*Dt],
+            [0, 1,  Vc*math:cos(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:sin(Thc)*Dt],
+            [0, 0, 1,                               0],
+            [0, 0, DAdTh*Dt,                        1],
+            [0, 0, 0,                               0]
             ])
         end,
 
@@ -105,14 +104,14 @@ measure(State) ->
             Xnew = Xpred,
             Pnew = Ppred;
         {Xmes, Ymes} ->
-            [_,_,Th_pred, V_pred, Bw_pred] = mat:to_array(Xpred),
+            [_,_,Th_pred, _V_pred] = mat:to_array(Xpred),
             Theta_mes = Th_pred,  % or use Roll from quaternion if preferred
-            Z = mat:matrix([[Xmes],[Ymes],[Theta_mes],[V_mes],[Bw_pred]]),
+            Z = mat:matrix([[Xmes],[Ymes],[Theta_mes],[V_mes]]),
             R5 = mat:diag([
-            ?R_S, ?R_S, ?R_TH, ?R_V, ?R_BW
+            ?R_S, ?R_S, ?R_TH, ?R_V
             ]),
             H5 = fun(X) -> X end,
-            Jh5 = fun(_) -> mat:eye(5) end,
+            Jh5 = fun(_) -> mat:eye(4) end,
             {Xnew, Pnew} = kalman:ekf({Xpred,Ppred}, {F,Jf}, {H5,Jh5}, Qd, R5, Z)
         end,
 
