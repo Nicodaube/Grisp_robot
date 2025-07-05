@@ -63,26 +63,10 @@ measure(State) ->
             [Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
             Theta_mes = Roll,
 
-            
-
-            {X_mes,Y_mes} = case get_new_robot_pos(OldRoom) of
-                no_intersection -> 
-                    {0.0,0.0};
-                {Xout,Yout} -> 
-                    {Xout,Yout}
-            end,
-
-            %%% check  pour voir si les valeurs sont cohérente %%%
-            
-        
-            Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
-
-            % Matrices de bruit
-            %%%%%% Faire varier Q et R pour voir si ça change %%%%%%%%%%
             Q  = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q]),
-            R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
-
+            
             % Fonction de transition f(x)
+          
             F = fun(X) ->
                 [Xc, Yc, Thetac] = mat:to_array(X),
                 Xp = Xc + V_mes * math:cos(Thetac) * Dt,
@@ -101,33 +85,57 @@ measure(State) ->
                     [0, 0, 1]  
                 ])
             end,
-            
+
+            case get_new_robot_pos(OldRoom) of
+                no_intersection -> 
+                    {Xpred,Ppred} = ekf_predict({Xpos, Ppos}, {F, Jf}, Q),
+                    
+                    [Xf, Yf, Thetaf] = mat:to_array(Xpred),
+                    ThetaDegrees = Thetaf * ?RAD_TO_DEG,
+
+                    NewState = #{ 
+                        t0   => T1,
+                        x_pos => Xpred,
+                        p_pos => Ppred,
+                        seq  => Seq +1
+                    };
+                {X_mes,Y_mes} -> 
+                    Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
+                    R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
+
+                    
+                    % Fonction de mesure h(x) = x
+                    H = fun(X) -> X end,
+                    Jh = fun(_) -> mat:eye(3) end,
+
+                    {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
+                    
+                    Y = mat:'-'(Z, H(Xnew)),
+                    [Yx, Yy, Ytheta] = mat:to_array(Y),
+                    io:format("INNOV,~p,~p,~p~n", [Yx, Yy, Ytheta]),
+                    [Xf, Yf, Thetaf] = mat:to_array(Xnew),
+                    ThetaDegrees = Thetaf * ?RAD_TO_DEG,
+
+                    NewState = #{ 
+                        t0   => T1,
+                        x_pos => Xnew,
+                        p_pos => Pnew,
+                        seq  => Seq +1
+                    }
+                    
+            end,
 
             
-            % Fonction de mesure h(x) = x
-            H = fun(X) -> X end,
-            Jh = fun(_) -> mat:eye(3) end,
-
-            {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
+        
             
-            Y = mat:'-'(Z, H(Xnew)),
-            [Yx, Yy, Ytheta] = mat:to_array(Y),
-            io:format("INNOV,~p,~p,~p~n", [Yx, Yy, Ytheta]),
-            [Xf, Yf, Thetaf] = mat:to_array(Xnew),
+            
 
             %Y = mat:'-'(Z, H(Xf)),
             %ErrorNorm = norm(mat:to_array(Y)),  
 
             %io:format("ErrorNorm = ~p~n", [ErrorNorm]),
 
-            ThetaDegrees = Thetaf * ?RAD_TO_DEG,
-
-            NewState = #{ 
-                t0   => T1,
-                x_pos => Xnew,
-                p_pos => Pnew,
-                seq  => Seq +1
-            },
+            
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
@@ -417,3 +425,10 @@ quat_to_euler([W, X, Y, Z]) ->
     Yaw = math:atan2(Siny_cosp, Cosy_cosp),
 
     [Roll, Pitch, Yaw].
+
+
+ekf_predict({X0, P0}, {F, Jf}, Q) ->
+    Xp = F(X0),
+    Jfx = Jf(X0),
+    Pp = mat:eval([Jfx, '*', P0, '*´', Jfx, '+', Q]),
+    {Xp,Pp}.
