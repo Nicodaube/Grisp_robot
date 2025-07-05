@@ -7,13 +7,13 @@
 %%%% incertitude dynamique %%%%
 % plus la valeur est grande, moins tu fais confiance à ton modèle %
 
--define(VAR_P, 0.1). % pour la position
--define(VAR_Q, 0.005). %pour theta
+-define(VAR_P, 0.01). % pour la position
+-define(VAR_Q, 0.0005). %pour theta
 
 %%%% fiabilité capteur %%%%
 % plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.05). % pour le sonar x et y
--define(VAR_R, 0.01). % gyroscope
+-define(VAR_S, 0.0025). % pour le sonar x et y
+-define(VAR_R, 0.002). % gyroscope
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(BETA, 0.07).
@@ -21,7 +21,6 @@ init(_Args) ->
     timer:sleep(2000),
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
     persistent_term:put(ahrs_quat, [1,0,0,0]),
-    persistent_term:put(acc_proj_filtered,0.0),
     calibrate(),
     calibrate_speed(),
 
@@ -30,15 +29,13 @@ init(_Args) ->
         x_pos => mat:zeros(3, 1),
         p_pos => mat:diag([10,10,10]),
         yaw => mat:eye(1),
-        q_dyn => mat:diag([0.01, 0.01, 0.005]),
-        r_dyn => mat:diag([0.05, 0.05, 0.01]),
         seq => 2
     },
 
     {ok, State, #{
         name => kalman_measure,
         iter => infinity,
-        timeout => 300
+        timeout => 100
     }}.
 
 measure(State) ->
@@ -46,8 +43,6 @@ measure(State) ->
         t0   := T0,
         x_pos := Xpos,
         p_pos := Ppos,
-        q_dyn := Q_init,
-        r_dyn := R_init,
         seq  := Seq
         
     } = State,
@@ -56,7 +51,7 @@ measure(State) ->
         [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
             T1 = erlang:system_time()/1.0e6,
             Dt = (T1 - T0) / 1000.0,
-
+            io:format("voici le DT : ~p~n",[Dt]),
             {V_mes_mm,_} = i2c_read(),
             V_mes = V_mes_mm / 100,
             {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
@@ -65,19 +60,11 @@ measure(State) ->
             
             % Estimation theta obsolue %
             Quat = persistent_term:get(ahrs_quat),
-            R1 = quat_to_matrix(Quat),
-            % On prend la 2e et 3e colonne du repère pour projeter dans le plan YZ
-            [ _R11, _R12, R13,
-            _R21, _R22, R23,
-            _R31, _R32, R33 ] = mat:to_array(R1),
-            Col3 = [R13, R23, R33],
+            [Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
+            Theta_mes = Roll,
 
-            [_, Y2, Z2] = Col3,
-            % On calcule la direction du vecteur "avant" projetée dans YZ
-            DirY = Y2,
-            DirZ =  Z2,
-            Theta_mes = math:atan2(DirY, DirZ),
             
+
             {X_mes,Y_mes} = case get_new_robot_pos(OldRoom) of
                 no_intersection -> 
                     {0.0,0.0};
@@ -87,33 +74,30 @@ measure(State) ->
 
             %%% check  pour voir si les valeurs sont cohérente %%%
             
-            io:format("X = ~p, Y = ~p theta = ~p, Vitesse =  ~p~n", [X_mes,Y_mes,Theta_mes,V_mes]),
-
+        
             Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
 
             % Matrices de bruit
             %%%%%% Faire varier Q et R pour voir si ça change %%%%%%%%%%
-            Q  = Q_init,
-            R  = R_init,
+            Q  = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q]),
+            R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
 
             % Fonction de transition f(x)
-            
-
             F = fun(X) ->
                 [Xc, Yc, Thetac] = mat:to_array(X),
+                Xp = Xc + V_mes * math:cos(Thetac) * Dt,
+                Yp = Yc + V_mes * math:sin(Thetac) * Dt,
                 Theta_next = Thetac + Omega * Dt,
-                Xp = Xc + V_mes * math:cos(Theta_next) * Dt,
-                Yp = Yc + V_mes * math:sin(Theta_next) * Dt,
                 mat:matrix([[Xp], [Yp], [Theta_next]])
             end,
             
             % Jacobienne de f
             Jf = fun(X) ->
                 [_,_,Th] = mat:to_array(X),
-                Thnn = Th + Omega * Dt,
+                
                 mat:matrix([
-                    [1, 0, -V_mes * math:sin(Thnn) * Dt],
-                    [0, 1,  V_mes * math:cos(Thnn) * Dt],
+                    [1, 0, -V_mes * math:sin(Th) * Dt],
+                    [0, 1,  V_mes * math:cos(Th) * Dt],
                     [0, 0, 1]  
                 ])
             end,
@@ -125,32 +109,10 @@ measure(State) ->
             Jh = fun(_) -> mat:eye(3) end,
 
             {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
+            
             Y = mat:'-'(Z, H(Xnew)),
-            ErrorNorm = math:sqrt(lists:sum([E*E || E <- mat:to_array(Y)])),
-            % Ajustement adaptatif de Q et R
-
-
-            Qdyn = maps:get(q_dyn, State),
-            Rdyn = maps:get(r_dyn, State),
-
-            AdaptedQ =
-                case ErrorNorm of
-                    E when E > 0.2 -> scale_diag(Qdyn, 1.2);
-                    E when E < 0.05 -> scale_diag(Qdyn, 0.8);
-                    _ -> Qdyn
-                end,
-
-            AdaptedR =
-                case ErrorNorm of
-                    D when D > 0.2 -> scale_diag(Rdyn, 1.2);
-                    D when D < 0.05 -> scale_diag(Rdyn, 0.8);
-                    _ -> Rdyn
-                end,
-            io:format("Innovation Norm = ~p~n", [ErrorNorm]),
-            io:format("Q shape: ~p~n", [mat:to_array(AdaptedQ)]),
-            io:format("R shape: ~p~n", [mat:to_array(AdaptedR)]),
-            io:format("Ppos shape: ~p~n", [mat:to_array(Ppos)]),
-
+            [Yx, Yy, Ytheta] = mat:to_array(Y),
+            io:format("INNOV,~p,~p,~p~n", [Yx, Yy, Ytheta]),
             [Xf, Yf, Thetaf] = mat:to_array(Xnew),
 
             %Y = mat:'-'(Z, H(Xf)),
@@ -164,8 +126,6 @@ measure(State) ->
                 t0   => T1,
                 x_pos => Xnew,
                 p_pos => Pnew,
-                q_dyn => AdaptedQ,
-                r_dyn  => AdaptedR,
                 seq  => Seq +1
             },
 
@@ -184,10 +144,6 @@ measure(State) ->
 %============================================================================================================================================
 %======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
-
-scale_diag(Matri,Factor) ->
-    Final = scale(mat:to_array(Matri), Factor),
-    mat:matrix([Final]).
 
 calibrate() ->
     N=500,
@@ -338,7 +294,7 @@ get_val_nav(Dt) ->
     
     
     {GBx, GBy, GBz} = persistent_term:get(gyro_init),
-    Gyro = scale([Gx-GBx,Gy-GBy,-(Gz-GBz)],math:pi()/180),
+    Gyro = scale([Gx-GBx,Gy-GBy,Gz-GBz],math:pi()/180),
 
     {MBx,MBy,MBz} = persistent_term:get(mag_init),
     Mag = mat:matrix([[Mx-MBx,My-MBy,Mz-MBz]]),
@@ -460,4 +416,4 @@ quat_to_euler([W, X, Y, Z]) ->
     Cosy_cosp = 1 - 2 * (Y * Y + Z * Z),
     Yaw = math:atan2(Siny_cosp, Cosy_cosp),
 
-    {Roll, Pitch, Yaw}.
+    [Roll, Pitch, Yaw].
