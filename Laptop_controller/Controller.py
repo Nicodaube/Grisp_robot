@@ -62,7 +62,7 @@ class User_interface:
     def __init__(self, trajectory):
 
         pygame.init()
-        #self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
+        self.ser = serial.Serial(port="/dev/ttyACM0", baudrate=115200)
         info = pygame.display.Info()
         self.WIDTH, self.HEIGHT = info.current_w, info.current_h
 
@@ -1091,7 +1091,7 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            #self.serial_comm()
+            self.serial_comm()
 
         # Quit
         pygame.quit()
