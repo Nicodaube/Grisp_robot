@@ -7,13 +7,13 @@
 %%%% incertitude dynamique %%%%
 % plus la valeur est grande, moins tu fais confiance à ton modèle %
 
--define(VAR_P, 0.01). % pour la position
--define(VAR_Q, 0.0005). %pour theta
+-define(VAR_P, 0.025). % pour la position
+-define(VAR_Q, 0.002). %pour theta
 
 %%%% fiabilité capteur %%%%
 % plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.0025). % pour le sonar x et y
--define(VAR_R, 0.002). % gyroscope
+-define(VAR_S, 0.0002). % pour le sonar x et y
+-define(VAR_R, 0.008). % gyroscope
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(BETA, 0.07).
@@ -35,12 +35,12 @@ init(_Args) ->
     {ok, State, #{
         name => kalman_measure,
         iter => infinity,
-        timeout => 100
+        timeout => 150
     }}.
 
 measure(State) ->
     #{ 
-        t0   := T0,
+        t0 := T0,
         x_pos := Xpos,
         p_pos := Ppos,
         seq  := Seq
@@ -124,18 +124,6 @@ measure(State) ->
                     }
                     
             end,
-
-            
-        
-            
-            
-
-            %Y = mat:'-'(Z, H(Xf)),
-            %ErrorNorm = norm(mat:to_array(Y)),  
-
-            %io:format("ErrorNorm = ~p~n", [ErrorNorm]),
-
-            
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
@@ -358,8 +346,8 @@ update([Gx, Gy, Gz], [Ax, Ay, Az], [Mx, My, Mz], Dt, [Q0, Q1, Q2, Q3]) ->
     F1 = 2*(Q1*Q3 - Q0*Q2) - Axn,
     F2 = 2*(Q0*Q1 + Q2*Q3) - Ayn,
     F3 = 2*(0.5 - Q1*Q1 - Q2*Q2) - Azn,
-    F4 = Hx - 1.0,
-    F5 = Hy,
+    _F4 = Hx - 1.0,
+    _F5 = Hy,
 
     %% Gradient descent step
     Grad0 = -F1*Q2 + F2*Q1,
