@@ -3,7 +3,7 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.3).
+-define(LPF_ALPHA, 0.6).
 
 -export([init/1, measure/1]).
 

@@ -12,8 +12,8 @@
 
 %%%% fiabilité capteur %%%%
 % plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.0002). % pour le sonar x et y
--define(VAR_R, 0.008). % gyroscope
+-define(VAR_S, 0.02). % pour le sonar x et y
+-define(VAR_R, 0.08). % gyroscope
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(BETA, 0.07).
@@ -57,7 +57,7 @@ measure(State) ->
             {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
             [Omega,_,_] = mat:to_array(Gyro),
 
-            
+            io:format("voici la vitessen: ~p~n" , [V_mes]),
             % Estimation theta obsolue %
             Quat = persistent_term:get(ahrs_quat),
             [Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
