@@ -140,31 +140,38 @@ loop_config(Id) ->
             loop_config(Id)
     end.
 
-loop_run(Id) ->
+loop_run(Id, Num) ->
     receive
         {hera_notify, ["Handshake", OPriority, OTimeClock]} -> % Received from the other sensor in during the sonar sensors role distribution
-            resolve_handshake(Id, OPriority, OTimeClock);
+            resolve_handshake(Id, Num, OPriority, OTimeClock);
         {hera_notify, ["Ok", _]} -> % Received from the other sensor to acknowledge the roles of the sensors 
-            end_handshake(Id);
+            end_handshake(Id, Num);
         {hera_notify, ["Exit"]} -> % Received when the controller is exited
             io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
             io:format("[SENSOR] Already started~n"),
-            loop_run(Id);
+            loop_run(Id, Num);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
-            loop_run(Id);
+            loop_run(Id, Num);
+        {hera_notify, ["Clock", _]} -> % Received to update the sonar clock
+            tick(Id, Num);
         {hera_notify, Msg} -> % Unhandled Message
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
-            loop_run(Id);
+            loop_run(Id, Num);        
         Msg -> % Message not from hera_notify
-            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
-            loop_run(Id)
+            io:format("[SENSOR] received strange message : ~p~n",[Msg]),
+            loop_run(Id, Num)
     end.
 
 %============================================================================================================================================
 %======================================================== LOOP FUNCTIONS ====================================================================
 %============================================================================================================================================
+
+tick(Id, Num) ->
+    Pid = persistent_term:get(sonar_sensor),
+    Pid ! clock,
+    loop_run(Id, Num).
 
 add_device(Id, Name, SIp, SPort) ->
     % Adds a device to the list of known devices
@@ -267,9 +274,9 @@ start_measures(Id) ->
            
     %persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
-    loop_run(Id).
+    loop_run(Id, 0).
 
-resolve_handshake(Id, OPriority, OTimeClock) ->
+resolve_handshake(Id, Num, OPriority, OTimeClock) ->
     % Sends a message with the informations concerning the sensors role definition
     % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param OPriority : Other sensor's random priority (String)
@@ -278,25 +285,25 @@ resolve_handshake(Id, OPriority, OTimeClock) ->
     case Pid of
         none ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
-            loop_run(Id);
+            loop_run(Id, Num);
         _ ->
             %io:format("[SENSOR] Sending handshake informations~n"),
             Pid ! {handshake, list_to_integer(OPriority), list_to_integer(OTimeClock)},
-            loop_run(Id)
+            loop_run(Id, Num)
     end.
 
-end_handshake(Id)->
+end_handshake(Id, Num)->
 % Sends a ok message to signify the end of the handshake procedure
     % @param Id : Sensor's Id set by the jumpers (Integer)
     Pid = persistent_term:get(sonar_sensor, none),
     case Pid of
         none -> 
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
-            loop_run(Id);
+            loop_run(Id, Num);
         _ ->
             %io:format("[SENSOR] Sending handshake ok~n"),
             Pid ! {ok, role},
-            loop_run(Id)
+            loop_run(Id, Num)
     end.
 
 reset_state(Id) ->

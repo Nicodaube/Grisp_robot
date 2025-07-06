@@ -59,6 +59,8 @@ class Server:
                         self.handle_ack(data)   
                     elif data_split[0] == "Distance":
                         self.csv_saver.save_distance_sonar(data_split[2], data_split[1])
+                    elif data_split[0] == "Clock":
+                        self.csv_saver.save_clock(data_split[1], data_split[2])
                     else : # Default case
                         print("[SERVER] received strange data : " + data)
                 except : 
@@ -143,9 +145,7 @@ class Server:
         if type == "brd":
             threading.Thread(target=self.brd_server, args=(message,), daemon=True).start()
         elif type == "uni":
-            threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start()
-
-        
+            threading.Thread(target=self.uni_server, args=(message, id), daemon=True).start() 
 
     def brd_server(self, message):
         # Sends a broadcast message
