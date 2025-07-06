@@ -154,40 +154,24 @@ loop_run(Id, Num) ->
             loop_run(Id, Num);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop_run(Id, Num);
-        {hera_notify, ["Clock", Clock, NumClock]} -> % Received to update the sonar clock
-            update_clock(Id, NumClock, Clock);
+        {hera_notify, ["Clock", _]} -> % Received to update the sonar clock
+            tick(Id, Num);
         {hera_notify, Msg} -> % Unhandled Message
             io:format("[SENSOR] Received unhandled message : ~p~n", [Msg]),
             loop_run(Id, Num);        
         Msg -> % Message not from hera_notify
-            io:format("[SENSOR] receive strange message : ~p~n",[Msg]),
+            io:format("[SENSOR] received strange message : ~p~n",[Msg]),
             loop_run(Id, Num)
-    after 500 ->
-        sync_clock(Id, Num)
     end.
 
 %============================================================================================================================================
 %======================================================== LOOP FUNCTIONS ====================================================================
 %============================================================================================================================================
 
-update_clock(Id, Num, Clock) ->
-    Current_time = erlang:system_time(millisecond),   
-    io:format("[SENSOR] Clock,~p,~p,~p~n", [Clock, Num, Current_time - list_to_integer(Clock)]),
-    persistent_term:put(sonar_clock, {list_to_integer(Clock), Current_time - list_to_integer(Clock)}),
+tick(Id, Num) ->
+    Pid = persistent_term:get(sonar_sensor),
+    Pid ! clock,
     loop_run(Id, Num).
-
-sync_clock(Id, Num) ->
-    Clock = erlang:system_time(millisecond),
-    case persistent_term:get(sensor_role, []) of
-        master ->
-            Osensor = persistent_term:get(osensor),
-            persistent_term:put(sonar_clock, {Clock, 0}),
-            Msg     = "Clock," ++ integer_to_list(Clock) ++ "," ++ integer_to_list(Num+1),
-            hera_com:send_unicast(Osensor, Msg, "UTF8"),
-            loop_run(Id, Num+1);
-        _ ->
-            loop_run(Id, Num)
-    end.
 
 add_device(Id, Name, SIp, SPort) ->
     % Adds a device to the list of known devices
@@ -319,7 +303,7 @@ end_handshake(Id, Num)->
         _ ->
             %io:format("[SENSOR] Sending handshake ok~n"),
             Pid ! {ok, role},
-            sync_clock(Id, Num)
+            loop_run(Id, Num)
     end.
 
 reset_state(Id) ->
