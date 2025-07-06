@@ -1,154 +1,130 @@
--module(kalman_measure).
-
+%%-----------------------------------------------------------------------------%%
+%% Module: kalman_measure_updated.erl
+%% Extended EKF with state [x, y, θ, v, b_ω]
+%%-----------------------------------------------------------------------------%%
+-module(kalman_measure_update).
 -behavior(hera_measure).
 
 -export([init/1, measure/1]).
 
-%%%% incertitude dynamique %%%%
-% plus la valeur est grande, moins tu fais confiance à ton modèle %
-
--define(VAR_P, 0.01). % pour la position
--define(VAR_Q, 0.0005). %pour theta
-
-%%%% fiabilité capteur %%%%
-% plus la valeur est grande moins tu fais confiance en la valeur %
--define(VAR_S, 0.0025). % pour le sonar x et y
--define(VAR_R, 0.002). % gyroscope
-
 -define(RAD_TO_DEG, 180.0/math:pi()).
 -define(BETA, 0.07).
+
+%%-----------------------------------------------------------------------------%%
+%% Noise parameters (discrete-time)
+%% Q_continuous * Δt -> Q_discrete
+-define(Q_P,   0.1).    % process noise cont for position [m²/s]
+-define(Q_TH,  0.005).  % process noise cont for angle [rad²/s]
+-define(Q_V,   0.2).    % process noise cont for velocity [ (m/s)²/s ]
+-define(Q_BW,  0.0001). % process noise cont for gyro bias [rad²/s³]
+
+-define(R_S,   0.0025). % measurement noise pos [m²]
+-define(R_TH,  0.0020). % measurement noise angle [rad²]
+-define(R_V,   0.02).   % measurement noise velocity [ (m/s)² ]
+-define(R_BW,  0.00001).% measurement noise bias [rad²]
+%%-----------------------------------------------------------------------------%%
 init(_Args) ->
     timer:sleep(2000),
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
     persistent_term:put(ahrs_quat, [1,0,0,0]),
     calibrate(),
     calibrate_speed(),
+    
+    %% Initial state: [x, y, θ, v, b_ω]
+    X0 = mat:matrix([[0],[0],[0],[0]]),
+    P0 = mat:diag([10,10, 10, 10]),
 
     State = #{
-        t0 => erlang:system_time()/1.0e6,
-        x_pos => mat:zeros(3, 1),
-        p_pos => mat:diag([10,10,10]),
-        yaw => mat:eye(1),
-        seq => 2
+      t0    => erlang:system_time()/1.0e6,
+      x_pos => X0,
+      p_pos => P0,
+      seq   => 1
     },
+    {ok, State, #{name => kalman_measure, iter => infinity, timeout => 100}}.
 
-    {ok, State, #{
-        name => kalman_measure,
-        iter => infinity,
-        timeout => 100
-    }}.
-
+%%-----------------------------------------------------------------------------%%
+%% measure/1: prediction + conditional update
 measure(State) ->
-    #{ 
-        t0   := T0,
-        x_pos := Xpos,
-        p_pos := Ppos,
-        seq  := Seq
-        
-    } = State,
-
+    #{t0 := T0, x_pos := Xprev, p_pos := Pprev, seq := Seq} = State,
     case hera_data:get(robot_pos, robot) of 
         [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
-            T1 = erlang:system_time()/1.0e6,
-            Dt = (T1 - T0) / 1000.0,
-            io:format("voici le DT : ~p~n",[Dt]),
-            {V_mes_mm,_} = i2c_read(),
-            V_mes = V_mes_mm / 100,
-            {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
-            [Omega,_,_] = mat:to_array(Gyro),
+        %% Compute Δt
+        T1 = erlang:system_time()/1.0e6,
+        Dt = (T1 - T0)/1000.0,
 
+        %% IMU and speed inputs
+        {V_mm, _} = i2c_read(),
+        V_mes = V_mm/100,
+        {_, _, Gyro_mtx, Acc_mtx, _} = get_val_nav(Dt),
+        [Omega, _, _] = mat:to_array(Gyro_mtx),
+        [Ax, Ay, Az]    = mat:to_array(Acc_mtx),
+
+        %% Build discrete Q = Q_cont * Dt
+        Qd = mat:diag([
+        ?Q_P*Dt,
+        ?Q_P*Dt,
+        ?Q_TH*Dt,
+        ?Q_V*Dt
+        ]),
+
+        %% Define F and Jf for extended CTRV + bias model
+        F = fun(X) ->
+            [Xc, Yc, Thc, Vc ] = mat:to_array(X),
+            Omega_corr = Omega,
+            Acc_long = -Az,%Ax*math:cos(Thc) + Ay*math:sin(Thc),
+            Vnext = Vc + Acc_long*Dt,
+            Xn = Xc + Vc*math:cos(Thc)*Dt + 0.5*Acc_long*Dt*Dt,
+            Yn = Yc + Vc*math:sin(Thc)*Dt + 0.5*Acc_long*Dt*Dt,
+            Thn = Thc + Omega_corr*Dt,
             
-            % Estimation theta obsolue %
-            Quat = persistent_term:get(ahrs_quat),
-            [Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
-            Theta_mes = Roll,
+            mat:matrix([[Xn],[Yn],[Thn],[Vnext]])
+        end,
 
-            Q  = mat:diag([?VAR_P, ?VAR_P, ?VAR_Q]),
-            
-            % Fonction de transition f(x)
-          
-            F = fun(X) ->
-                [Xc, Yc, Thetac] = mat:to_array(X),
-                Xp = Xc + V_mes * math:cos(Thetac) * Dt,
-                Yp = Yc + V_mes * math:sin(Thetac) * Dt,
-                Theta_next = Thetac + Omega * Dt,
-                mat:matrix([[Xp], [Yp], [Theta_next]])
-            end,
-            
-            % Jacobienne de f
-            Jf = fun(X) ->
-                [_,_,Th] = mat:to_array(X),
-                
-                mat:matrix([
-                    [1, 0, -V_mes * math:sin(Th) * Dt],
-                    [0, 1,  V_mes * math:cos(Th) * Dt],
-                    [0, 0, 1]  
-                ])
-            end,
+        Jf = fun(X) ->
+            [_, _, Thc, Vc, _Bwc] = mat:to_array(X),
+            _Acc_long = Ax*math:cos(Thc) + Ay*math:sin(Thc),
+            % dAcc_long/dθ = -Ax*sin(Thc) + Ay*cos(Thc)
+            DAdTh = 0,%-Ax*math:sin(Thc) + Ay*math:cos(Thc),
+            % Jacobian 5x5
+            mat:matrix([
+            [1, 0, -Vc*math:sin(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:cos(Thc)*Dt],
+            [0, 1,  Vc*math:cos(Thc)*Dt + 0.5*DAdTh*Dt*Dt, math:sin(Thc)*Dt],
+            [0, 0, 1,                               0],
+            [0, 0, DAdTh*Dt,                        1],
+            [0, 0, 0,                               0]
+            ])
+        end,
 
-            case get_new_robot_pos(OldRoom) of
-                no_intersection -> 
-                    {Xpred,Ppred} = ekf_predict({Xpos, Ppos}, {F, Jf}, Q),
-                    
-                    [Xf, Yf, Thetaf] = mat:to_array(Xpred),
-                    ThetaDegrees = Thetaf * ?RAD_TO_DEG,
+        %% Prediction step
+        {Xpred, Ppred} = ekf_predict({Xprev, Pprev}, {F, Jf}, Qd),
 
-                    NewState = #{ 
-                        t0   => T1,
-                        x_pos => Xpred,
-                        p_pos => Ppred,
-                        seq  => Seq +1
-                    };
-                {X_mes,Y_mes} -> 
-                    Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
-                    R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
+        %% Measurement update (5x1) if sonar OK
+        case get_new_robot_pos(OldRoom) of
+        no_intersection ->
+            Xnew = Xpred,
+            Pnew = Ppred;
+        {Xmes, Ymes} ->
+            [_,_,Th_pred, _V_pred] = mat:to_array(Xpred),
+            Theta_mes = Th_pred,  % or use Roll from quaternion if preferred
+            Z = mat:matrix([[Xmes],[Ymes],[Theta_mes],[V_mes]]),
+            R5 = mat:diag([
+            ?R_S, ?R_S, ?R_TH, ?R_V
+            ]),
+            H5 = fun(X) -> X end,
+            Jh5 = fun(_) -> mat:eye(4) end,
+            {Xnew, Pnew} = kalman:ekf({Xpred,Ppred}, {F,Jf}, {H5,Jh5}, Qd, R5, Z)
+        end,
 
-                    
-                    % Fonction de mesure h(x) = x
-                    H = fun(X) -> X end,
-                    Jh = fun(_) -> mat:eye(3) end,
+        %% Store and send
+        [Xf, Yf, Thf, _, _] = mat:to_array(Xnew),
+        ThetaDeg = Thf * ?RAD_TO_DEG,
+        hera_data:store(robot_pos, robot, Seq, [Xf, Yf, ThetaDeg, OldRoom]),
+        send_robot_pos([Xf, Yf, ThetaDeg, OldRoom]),
 
-                    {Xnew, Pnew} = kalman:ekf({Xpos, Ppos}, {F, Jf}, {H, Jh}, Q, R, Z),
-                    
-                    Y = mat:'-'(Z, H(Xnew)),
-                    [Yx, Yy, Ytheta] = mat:to_array(Y),
-                    io:format("INNOV,~p,~p,~p~n", [Yx, Yy, Ytheta]),
-                    [Xf, Yf, Thetaf] = mat:to_array(Xnew),
-                    ThetaDegrees = Thetaf * ?RAD_TO_DEG,
-
-                    NewState = #{ 
-                        t0   => T1,
-                        x_pos => Xnew,
-                        p_pos => Pnew,
-                        seq  => Seq +1
-                    }
-                    
-            end,
-
-            
-        
-            
-            
-
-            %Y = mat:'-'(Z, H(Xf)),
-            %ErrorNorm = norm(mat:to_array(Y)),  
-
-            %io:format("ErrorNorm = ~p~n", [ErrorNorm]),
-
-            
-
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            
-            hera_data:store(robot_pos, robot, Seq, [Xf, Yf, ThetaDegrees, OldRoom]),
-            send_robot_pos([Xf, Yf, ThetaDegrees, OldRoom]),
-
-            {ok, [Xf,Yf, ThetaDegrees, OldRoom], robot_pos, robot, NewState};
-        [] ->
-            {undefined, State}
-    
-    end.               
+        %% New state
+        NewState = #{t0 => T1, x_pos => Xnew, p_pos => Pnew, seq => Seq+1},
+        {ok, [Xf,Yf,ThetaDeg,OldRoom], robot_pos, robot, NewState}
+    end.            
 %============================================================================================================================================
 %======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
