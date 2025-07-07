@@ -3,7 +3,10 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.6).
+-define(LPF_ALPHA, 0.3).
+-define(SMOOTHING_WINDOW, 11). % Must be odd
+-define(HAMPEL_WIDOW, 8).
+-define(N_SIG, 5.0).
 
 -export([init/1, measure/1]).
 
@@ -13,16 +16,18 @@
 
 init(_Args) ->
     get_sensor_role(),
-    timer:sleep(1000),
+    timer:sleep(200),
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     State = #{
-        seq => get_init_seq(),
-        last_measure => none
+        seq          => get_init_seq(),
+        last_measure => none,
+        buf_h        => [],
+        buf_s        => [],
+        w_h          => ?HAMPEL_WIDOW,
+        n_sig        => ?N_SIG,
+        w_s          => ?SMOOTHING_WINDOW
     },
-    {ok, State, #{
-        name => sonar_sensor,
-        iter => infinity
-    }}.
+    {ok, State, #{name=>sonar_sensor, iter=>infinity}}.
     
 measure(State) ->  
     receive
@@ -139,26 +144,43 @@ get_ground_distance(SensorName, D) ->
 
 low_pass_filter(Ground_measure, State, SensorName) ->
     #{
-        seq := Seq,
-        last_measure := Last_measure
+      seq          := Seq,
+      last_measure := Last,
+      buf_h        := BufH,
+      buf_s        := BufS,
+      w_h          := W_H,
+      n_sig        := N_SIG,
+      w_s          := W_S
     } = State,
 
-    %Low pass filter on measure to smooth noise
-    case Last_measure of
-        none ->
-            New_measure = Ground_measure;
-        _ ->
-            New_measure = ?LPF_ALPHA * Last_measure + (1-?LPF_ALPHA) * Ground_measure           
+    %% 1) LPF existant
+    New1 = case Last of
+      none -> Ground_measure;
+      _    -> ?LPF_ALPHA * Last + (1-?LPF_ALPHA)*Ground_measure
     end,
 
-    hera_com:send_unicast(server, "Distance,"++float_to_list(New_measure)++","++atom_to_list(SensorName), "UTF8"),
+    %% 2) Étape Hampel
+    BufH1 = append_buf(BufH, New1, 2*W_H+1),
+    MedH  = median(BufH1),
+    MAD   = median([abs(X-MedH) || X <- BufH1]),
+    ValH  = if abs(New1-MedH) > N_SIG * MAD -> MedH; true -> New1 end,
 
-    hera_data:store(distance, SensorName, Seq, [New_measure]),
-    NewState = #{
-        seq => Seq + 1,
-        last_measure => New_measure
+    %% 3) Lissage médian causal
+    BufS1 = append_buf(BufS, ValH, W_S),
+    Y     = median(BufS1),
+
+    %% 4) envoi / stockage
+    hera_com:send_unicast(server,
+      "Distance,"++float_to_list(Y)++","++atom_to_list(SensorName),"UTF8"),
+    hera_data:store(distance, SensorName, Seq, [Y]),
+
+    NewState = State#{
+      seq => Seq+1,
+      last_measure => Y,
+      buf_h => BufH1,
+      buf_s => BufS1
     },
-    {ok, [New_measure], distance, SensorName, NewState}.
+    {ok, [Y], distance, SensorName, NewState}.
 
 
 %============================================================================================================================================
@@ -171,3 +193,22 @@ get_rand_num() ->
     Seed = {erlang:monotonic_time(), erlang:unique_integer([positive]), erlang:phash2(node())},
     rand:seed(exsplus, Seed),
     {ok, rand:uniform(3000)}.
+
+append_buf(Buf, X, Len) ->
+    Buf2 = lists:append(Buf, [X]),
+    Excess = length(Buf2) - Len,
+    case Excess > 0 of
+      true  -> lists:sublist(Buf2, Excess+1, Len);
+      false -> Buf2
+    end.
+
+median(List) when List =/= [] ->
+    S = lists:sort(List),
+    L = length(S),
+    case L rem 2 of
+      1 -> lists:nth((L+1) div 2, S);
+      0 ->
+        A = lists:nth(L div 2, S),
+        B = lists:nth(L div 2+1, S),
+        (A + B)/2.0
+    end.
