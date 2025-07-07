@@ -2,9 +2,10 @@
 
 -export([init/1]).
 
--define(TIMESLOT_SIZE, 200).
+-define(TIMESLOT_SIZE, 300).
 
 init(TimeClock) ->
+    process_flag(priority, max),
     Osensor = persistent_term:get(osensor),
     Sonar_Pid = persistent_term:get(sonar_sensor),
     loop(TimeClock, Sonar_Pid, Osensor, 1).
