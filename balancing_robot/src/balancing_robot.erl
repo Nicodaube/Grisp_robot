@@ -233,7 +233,7 @@ start_measures() ->
 reset_state() ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    exit_measure_module(kalman_measure),
+    exit_module(kalman_measure),
 
     timer:sleep(500),
     reset_data(),
@@ -247,22 +247,24 @@ reset_state() ->
 
 reset_data() ->
     % Delete all config dependent and hera_measures data
+
     persistent_term:erase(kalman_measure),
     hera_com:reset_devices(), 
     hera_data:reset(),
     io:format("[ROBOT] Data resetted~n~n~n~n"),
     io:format("=================================================================================================~n").
 
-exit_measure_module(Name) ->
+exit_module(Name) ->
     % Kills a module stored in persistent term
     % @param Name : the name of the module (atom)
-    Pid = persistent_term:get(Name, none),    
-    case Pid of
+    case persistent_term:get(Name, none) of
         none ->
+            io:format("[ROBOT] module doesn't exist : ~p~n", [Name]),
             ok;
-        _ -> 
+        Pid -> 
             exit(Pid, shutdown)
     end.
+
 
 ack_message(Message, Device) ->
     % Used to send the acknowledgment message to the controller.

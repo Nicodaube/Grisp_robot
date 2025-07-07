@@ -272,7 +272,6 @@ start_measures(Id) ->
     {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
     persistent_term:put(sonar_sensor, Sonar_Pid),
            
-    %persistent_term:put(kalman_measure, Kalman_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop_run(Id, 0).
 
@@ -309,7 +308,8 @@ end_handshake(Id, Num)->
 reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    exit_measure_module(sonar_sensor),
+    exit_module(sonar_sensor),
+    exit_module(clock),
 
     timer:sleep(500),
     reset_data(),
@@ -330,14 +330,13 @@ reset_data() ->
     io:format("[SENSOR] Data resetted~n~n~n~n"),
     io:format("=================================================================================================~n").
 
-exit_measure_module(Name) ->
+exit_module(Name) ->
     % Kills a module stored in persistent term
     % @param Name : the name of the module (atom)
-    Pid = persistent_term:get(Name, none),    
-    case Pid of
+    case persistent_term:get(Name, none) of
         none ->
             ok;
-        _ -> 
+        Pid -> 
             exit(Pid, shutdown)
     end.
 

@@ -107,7 +107,6 @@ class CSV_saver:
         df_clock = pd.read_csv(f"./data/clock_tick_{self.timestamp}.csv", header=None, names=["timestamp", "num", "clock"])
         df1 = pd.read_csv(f"./data/sonar_dist_sensor_1_{self.timestamp}.csv",header=None, names=["timestamp", "dist"])
         df2 = pd.read_csv(f"./data/sonar_dist_sensor_2_{self.timestamp}.csv",header=None, names=["timestamp", "dist"])
-        print("success reading files")
         t0 = df_clock["timestamp"].iloc[0]
 
         df_clock["timestamp"] -= t0
@@ -123,7 +122,6 @@ class CSV_saver:
         fig, ax = plt.subplots(figsize=(20, 10))
         ax.plot(x1, y1, label="Measured distance sensor 1", linewidth=1, marker='.')
         ax.plot(x2, y2, label="Measured distance sensor 2", linewidth=1, marker='.')
-        print("success plotting files")
 
         ax.set_ylim([0, 100])
         ax.set_yticks(np.arange(0, 100, step=10))
@@ -136,15 +134,11 @@ class CSV_saver:
 
         ax.legend()
         ax.grid(True)
-        print("pré save")
-
-        # Save and display
-        plt.savefig(f"./plots/dist_kalman.png")
+        
+        plt.savefig(f"./plots/dist_kalman_{self.timestamp}.png")
 
     def create_pos_kalman_plots(self):
-        print("kalman_plots")
         pos_data = pd.read_csv(f"./data/kalman_pos_{self.timestamp}.csv", header=None, names=["timestamp", "x", "y", "angle", "room"])
-        print("success reading files")
         x = pos_data['timestamp']          
         x_pos = pos_data['x'].astype(float)
             
@@ -165,6 +159,5 @@ class CSV_saver:
         ax2.set_ylim([0,1])
         ax2.legend()
         ax2.grid(True)
-        print("success plotting/pre save")
 
         plt.savefig(f'./plots/pos_kalman_{self.timestamp}.png')
