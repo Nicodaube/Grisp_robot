@@ -123,7 +123,7 @@ class CSV_saver:
         ax.plot(x1, y1, label="Measured distance sensor 1", linewidth=1, marker='.')
         ax.plot(x2, y2, label="Measured distance sensor 2", linewidth=1, marker='.')
 
-        ax.set_ylim([0, 100])
+        ax.set_ylim([0, 150])
         ax.set_yticks(np.arange(0, 100, step=10))
         ymin, ymax = ax.get_ylim()
         ax.vlines(xt, ymin, ymax, linewidth=0.25, label="Clock tick", colors="red")

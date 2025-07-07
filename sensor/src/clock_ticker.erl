@@ -2,7 +2,7 @@
 
 -export([init/1]).
 
--define(TIMESLOT_SIZE, 300).
+-define(TIMESLOT_SIZE, 200).
 
 init(TimeClock) ->
     process_flag(priority, max),

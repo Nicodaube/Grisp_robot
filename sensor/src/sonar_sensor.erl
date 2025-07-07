@@ -3,9 +3,9 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.2).
--define(SMOOTHING_WINDOW, 5). % Must be odd
--define(HAMPEL_WIDOW, 5).
+-define(LPF_ALPHA, 0.3).
+-define(SMOOTHING_WINDOW, 11). % Must be odd
+-define(HAMPEL_WIDOW, 8).
 -define(N_SIG, 5.0).
 
 -export([init/1, measure/1]).
@@ -16,7 +16,7 @@
 
 init(_Args) ->
     get_sensor_role(),
-    timer:sleep(500),
+    timer:sleep(200),
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     State = #{
         seq          => get_init_seq(),
@@ -202,7 +202,6 @@ append_buf(Buf, X, Len) ->
       false -> Buf2
     end.
 
-%% Calcul de médiane
 median(List) when List =/= [] ->
     S = lists:sort(List),
     L = length(S),

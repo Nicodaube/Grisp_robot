@@ -35,7 +35,7 @@ init(_Args) ->
     {ok, State, #{
         name => kalman_measure,
         iter => infinity,
-        timeout => 150
+        timeout => 100
     }}.
 
 measure(State) ->
