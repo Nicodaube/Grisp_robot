@@ -30,8 +30,35 @@ class Sensor :
             case "BL":
                 self.angle = 315
     
-    def update_pos(self, room, x, y):
+    def update_pos(self, room, x_corner, y_corner):
         self.room = room
+
+        match self.angle:
+            case 0:  
+                x = x_corner
+                y = y_corner                
+            case 45:
+                x = round(x_corner + 0.12, 2)
+                y = round(y_corner - 0.16, 2) 
+                                
+            case 90:   
+                x = x_corner
+                y = y_corner                
+            case 135:
+                x = round(x_corner - 0.16, 2)
+                y = round(y_corner - 0.12, 2)
+            case 180:     
+                x = x_corner
+                y = y_corner                
+            case 225:
+                x = round(x_corner - 0.16, 2)
+                y = round(y_corner + 0.12, 2)
+            case 270:
+                x = x_corner
+                y = y_corner       
+            case 315:
+                x = round(x_corner + 0.16, 2)
+                y = round(y_corner + 0.12, 2)
         self.x = x
         self.y = y 
         print("[SENSOR_" + str(self.id) + "] is at (" + str(self.x) + ", " + str(self.y) + ") in room number " + str(self.room) + " with an angle of " + str(self.angle))
