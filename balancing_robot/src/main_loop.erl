@@ -24,8 +24,8 @@ robot_init() ->
     case open_i2C_bus() of
         ok ->
             %PIDs initialisation
-            Pid_Speed = spawn(pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
-            Pid_Stability = spawn(pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
+            Pid_Speed = spawn(hera_pid_controller, pid_init, [-0.12, -0.07, 0.0, -1, 60.0, 0.0]),
+            Pid_Stability = spawn(hera_pid_controller, pid_init, [17.0, 0.0, 4.0, -1, -1, 0.0]),
             persistent_term:put(controllers, {Pid_Speed, Pid_Stability}),
             persistent_term:put(freq_goal, 300.0),
 
@@ -160,7 +160,7 @@ kalman_angle(Dt, Ax, Az, Gy, X0, P0) ->
 		end,
     
     Z = mat:matrix([[math:atan(Az / (-Ax))], [(Gy-Gy0)*?DEG_TO_RAD]]),
-    {X1, P1} = kalman:ekf({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z),
+    {X1, P1} = hera_kalman:extended_filter({X0, P0}, {F, Jf}, {H, Jh}, Q, R, Z),
 
     [Th_Kalman, _W_Kalman] = mat:to_array(X1),
     Angle = Th_Kalman * ?RAD_TO_DEG,

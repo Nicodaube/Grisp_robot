@@ -14,15 +14,15 @@ controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref
     %Saturate advance acceleration
     if   
         Adv_V_Goal > 0.0 ->
-            Adv_V_Ref_New = pid_controller:saturation(Adv_V_Ref+?ADV_ACCEL*Dt, ?ADV_V_MAX);
+            Adv_V_Ref_New = hera_pid_controller:saturation(Adv_V_Ref+?ADV_ACCEL*Dt, ?ADV_V_MAX);
         Adv_V_Goal < 0.0 ->
-            Adv_V_Ref_New = pid_controller:saturation(Adv_V_Ref- ?ADV_ACCEL*Dt, ?ADV_V_MAX);
+            Adv_V_Ref_New = hera_pid_controller:saturation(Adv_V_Ref- ?ADV_ACCEL*Dt, ?ADV_V_MAX);
         true ->
             if
                 Adv_V_Ref > 0.5  -> 
-                    Adv_V_Ref_New = pid_controller:saturation(Adv_V_Ref- ?ADV_ACCEL*Dt, ?ADV_V_MAX);
+                    Adv_V_Ref_New = hera_pid_controller:saturation(Adv_V_Ref- ?ADV_ACCEL*Dt, ?ADV_V_MAX);
                 Adv_V_Ref < -0.5 -> 
-                    Adv_V_Ref_New = pid_controller:saturation(Adv_V_Ref+?ADV_ACCEL*Dt, ?ADV_V_MAX);
+                    Adv_V_Ref_New = hera_pid_controller:saturation(Adv_V_Ref+?ADV_ACCEL*Dt, ?ADV_V_MAX);
                 true ->
                     Adv_V_Ref_New = 0.0
             end
@@ -31,15 +31,15 @@ controller({Dt, Angle, Speed}, {Adv_V_Goal, Adv_V_Ref}, {Turn_V_Goal, Turn_V_Ref
     %Saturate turning acceleration
     if   
         Turn_V_Goal > 0.0 ->
-            Turn_V_Ref_New = pid_controller:saturation(Turn_V_Ref+?TURN_ACCEL*Dt, ?TURN_V_MAX);
+            Turn_V_Ref_New = hera_pid_controller:saturation(Turn_V_Ref+?TURN_ACCEL*Dt, ?TURN_V_MAX);
         Turn_V_Goal < 0.0 ->
-            Turn_V_Ref_New = pid_controller:saturation(Turn_V_Ref- ?TURN_ACCEL*Dt, ?TURN_V_MAX);
+            Turn_V_Ref_New = hera_pid_controller:saturation(Turn_V_Ref- ?TURN_ACCEL*Dt, ?TURN_V_MAX);
         true ->
             if
                 Turn_V_Ref > 0.5  -> 
-                    Turn_V_Ref_New = pid_controller:saturation(Turn_V_Ref- ?TURN_ACCEL*Dt, ?TURN_V_MAX);
+                    Turn_V_Ref_New = hera_pid_controller:saturation(Turn_V_Ref- ?TURN_ACCEL*Dt, ?TURN_V_MAX);
                 Turn_V_Ref < -0.5 -> 
-                    Turn_V_Ref_New = pid_controller:saturation(Turn_V_Ref+?TURN_ACCEL*Dt, ?TURN_V_MAX);
+                    Turn_V_Ref_New = hera_pid_controller:saturation(Turn_V_Ref+?TURN_ACCEL*Dt, ?TURN_V_MAX);
                 true ->
                     Turn_V_Ref_New = 0.0
             end

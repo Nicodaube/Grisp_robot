@@ -85,7 +85,7 @@ measure(State) ->
 
                     ]),
                 
-                    {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
+                    {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
 
                     [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
 
@@ -93,7 +93,7 @@ measure(State) ->
                     R = mat:diag([?VAR_AZ,?VAR_AZ,?VAR_AZ]),
 
 
-                    {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R, Z),
+                    {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
 
                 
                     
@@ -157,7 +157,7 @@ measure(State) ->
 
                     ]),
                 
-                    {Xpred, Ppred} = kalman:kf_predict({Xpos, Ppos}, F, Q),
+                    {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
 
                     [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
 
@@ -165,7 +165,7 @@ measure(State) ->
                     R = mat:diag([?VAR_S, ?VAR_S,?VAR_AZ,?VAR_AZ,?VAR_AZ]),
 
 
-                    {Xnew, Pnew} = kalman:kf_update({Xpred, Ppred}, H, R, Z),
+                    {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
                     
                     
                     Xarray1 = mat:to_array(Xnew),
@@ -462,12 +462,12 @@ kalman_orientation(Acc,Acclin2,Gyro,Mag,R0,Rori,T1,T0,Xor,Por) ->
     Zor = mat:tr(Quat),
     Ror = mat:diag([?VAR_R,?VAR_R,?VAR_R,?VAR_R]),
 
-    {Xor0, Por0} = kalman:kf_predict({Xor,Por}, For, Qor),
+    {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
     {Xor1, Por1} = case qdot(mat:to_array(Zor), mat:to_array(Xor0)) > 0 of
         true ->
-            kalman:kf_update({Xor0, Por0}, Hor, Ror, Zor);
+            hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor);
         false ->
-            kalman:kf_update({mat:'*'(-1,Xor0), Por0}, Hor, Ror, Zor)
+            hera_kalman:update({mat:'*'(-1,Xor0), Por0}, Hor, Ror, Zor)
     end,
     {Xor1,Por1}.
 
