@@ -3,10 +3,10 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.3).
--define(SMOOTHING_WINDOW, 11).
+-define(LPF_ALPHA, 0.2).
+-define(SMOOTHING_WINDOW, 5).
 -define(HAMPEL_WINDOW, 8).
--define(N_SIG, 5.0).
+-define(N_SIG, 3.0).
 
 -export([init/1, measure/1]).
 
