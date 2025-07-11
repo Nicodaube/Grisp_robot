@@ -4,8 +4,8 @@
 
 -define(ROBOT_HEIGHT, 23).
 -define(LPF_ALPHA, 0.3).
--define(SMOOTHING_WINDOW, 11). % Must be odd
--define(HAMPEL_WIDOW, 8).
+-define(SMOOTHING_WINDOW, 11).
+-define(HAMPEL_WINDOW, 8).
 -define(N_SIG, 5.0).
 
 -export([init/1, measure/1]).
@@ -19,20 +19,38 @@ init(_Args) ->
     timer:sleep(200),
     io:format("~n[SONAR_SENSOR] Starting measurements~n"),
     State = #{
-        seq          => get_init_seq(),
+        seq => get_init_seq(),
         last_measure => none,
-        buf_h        => [],
-        buf_s        => [],
-        w_h          => ?HAMPEL_WIDOW,
-        n_sig        => ?N_SIG,
-        w_s          => ?SMOOTHING_WINDOW
+        hampel_buffer => [],
+        smooth_buffer => [],
+        n_sig => ?N_SIG
     },
     {ok, State, #{name=>sonar_sensor, iter=>infinity}}.
     
 measure(State) ->  
     receive
         clock ->
-            get_measure(State)
+            #{
+                seq := Seq,
+                last_measure := _,
+                hampel_buffer := _,
+                smooth_buffer := _,
+                n_sig := _
+            } = State,
+
+            SensorName = persistent_term:get(sensor_name),
+            {Measure, Hampel_buffer, Smooth_buffer} = get_measure(State),
+            hera_com:send_unicast(server, "Distance,"++float_to_list(Measure)++","++atom_to_list(SensorName),"UTF8"),
+
+            hera_data:store(distance, SensorName, Seq, [Measure]),
+
+            NewState = State#{
+                seq => Seq+1,
+                last_measure => Measure,
+                hampel_buffer => Hampel_buffer,
+                smooth_buffer => Smooth_buffer
+            },
+            {ok, [Measure], distance, SensorName, NewState}
     end.
         
             
@@ -50,7 +68,6 @@ get_sensor_role() ->
                 none -> % Classical sensor bootstrap
                     {ok, Priority} = get_rand_num(),
                     TimeClock = erlang:monotonic_time(millisecond),
-                    %io:format("[SONAR SENSOR] Random handshake Priority ~p~n", [Priority]),
                     role_handshake(Osensor, Priority, TimeClock);
                 _ ->  % Case where the sonar sensor crashed and was reloaded (need to find the latest seq number)
                     io:format("[SONAR_SENSOR] Recovering from crash"),
@@ -115,7 +132,10 @@ get_measure(State) ->
 
     case get_ground_distance(SensorName, Dist_cm) of
         {ok, Ground_measure} ->
-            low_pass_filter(Ground_measure, State, SensorName);
+            LPF_filtered = low_pass_filter(Ground_measure, State),
+            {Hampel_filtered, Hampel_buffer} = hampel_filter(LPF_filtered, State),
+            {Smoothed_Measure, Smooth_buffer} = smooth_measure(Hampel_filtered, State),
+            {Smoothed_Measure, Hampel_buffer, Smooth_buffer};
         {stop, cannot_get_height} ->
             {stop, cannot_get_height}
     end.
@@ -142,47 +162,50 @@ get_ground_distance(SensorName, D) ->
             {stop, cannot_get_height}
     end.
 
-low_pass_filter(Ground_measure, State, SensorName) ->
+low_pass_filter(Ground_measure, State) ->
     #{
-      seq          := Seq,
+      seq := _,
       last_measure := Last,
-      buf_h        := BufH,
-      buf_s        := BufS,
-      w_h          := W_H,
-      n_sig        := N_SIG,
-      w_s          := W_S
+      hampel_buffer := _,
+      smooth_buffer := _,
+      n_sig := _
     } = State,
 
-    %% 1) LPF existant
-    New1 = case Last of
+    case Last of
       none -> Ground_measure;
-      _    -> ?LPF_ALPHA * Last + (1-?LPF_ALPHA)*Ground_measure
-    end,
+      _ -> ?LPF_ALPHA * Last + (1-?LPF_ALPHA)*Ground_measure
+    end.
 
-    %% 2) Étape Hampel
-    BufH1 = append_buf(BufH, New1, 2*W_H+1),
-    MedH  = median(BufH1),
-    MAD   = median([abs(X-MedH) || X <- BufH1]),
-    ValH  = if abs(New1-MedH) > N_SIG * MAD -> MedH; true -> New1 end,
+hampel_filter(Measure, State) ->
+    #{
+      seq := _,
+      last_measure := _,
+      hampel_buffer := BufH,
+      smooth_buffer := _,
+      n_sig := N_sig
+    } = State,
 
-    %% 3) Lissage médian causal
-    BufS1 = append_buf(BufS, ValH, W_S),
-    Y     = median(BufS1),
+    New_BufH = append_buf(BufH, Measure, 2*?HAMPEL_WINDOW+1),
+    Buffer_Median  = median(New_BufH),
+    MAD = median([abs(X - Buffer_Median) || X <- New_BufH]),
+    if 
+        abs(Measure - Buffer_Median) > N_sig * MAD -> 
+            {Buffer_Median, New_BufH};
+        true ->
+            {Measure, New_BufH}
+    end.
 
-    %% 4) envoi / stockage
-    hera_com:send_unicast(server,
-      "Distance,"++float_to_list(Y)++","++atom_to_list(SensorName),"UTF8"),
-    hera_data:store(distance, SensorName, Seq, [Y]),
+smooth_measure(Measure, State) ->
+    #{
+      seq := _,
+      last_measure := _,
+      hampel_buffer := _,
+      smooth_buffer := BufS,
+      n_sig := _
+    } = State,
 
-    NewState = State#{
-      seq => Seq+1,
-      last_measure => Y,
-      buf_h => BufH1,
-      buf_s => BufS1
-    },
-    {ok, [Y], distance, SensorName, NewState}.
-
-
+    New_BufS = append_buf(BufS, Measure, ?SMOOTHING_WINDOW),
+    {median(New_BufS), New_BufS}.
 %============================================================================================================================================
 %=========================================================== HELPER FUNC ====================================================================
 %============================================================================================================================================
