@@ -22,7 +22,7 @@ init(_Args) ->
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
     calibrate(),
     calibrate_speed(),
-
+    
     State = #{
         t0 => hera:timestamp(),
         x_pos => mat:zeros(9, 1),
@@ -30,7 +30,9 @@ init(_Args) ->
         x_or => mat:matrix([[1],[0],[0],[0]]),
         p_or => mat:diag([10,10,10,10]),
         yaw => mat:eye(1),
-        seq => 2
+        seq => 2,
+        seqsensor1 => 2,
+        seqsensor2 => 2
     },
 
     {ok, State, #{
@@ -47,7 +49,9 @@ measure(State) ->
         x_or := Xor,
         p_or := Por,
         yaw := _Yaw,
-        seq  := Seq
+        seq  := Seq,
+        seqS1 := SeqS1,
+        seqS2 := Seqs2
         
     } = State,
 
@@ -111,7 +115,6 @@ measure(State) ->
                     YawDegrees = Yaw1 * ?RAD_TO_DEG,
 
                     
-                    
                     Xarray1 = mat:to_array(Xnew),
                     Xarray = Xarray1 ++ Xarray2,
 
@@ -122,7 +125,9 @@ measure(State) ->
                         x_or => Xor1,
                         p_or => Por1,
                         yaw => Yaw1,
-                        seq  => Seq +1
+                        seq  => Seq +1,
+                        seqS1 => SeqS1,
+                        seqS2 => Seqs2
                     },
                     
                     hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
@@ -130,78 +135,154 @@ measure(State) ->
 
                     {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState};
                     
-                {Xout, Yout} ->
-                    Dtpos = (T1 - T0)/1000,
+                {Xout, Yout,{Seqsensor1,Seqsensor2}} ->
+                    case {SeqS1 < Seqsensor1 andalso Seqs2 =< Seqsensor2} of
+                        {true} ->
+                            Dtpos = (T1 - T0)/1000,
 
 
-                    % kalman position
-                    F = mat:matrix([
-                        [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
-                        [0,1,Dtpos,0,0,0,0,0,0], % V_X
-                        [0,0,1,0,0,0,0,0,0], % Acc_X
-                        [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
-                        [0,0,0,0,1,Dtpos,0,0,0], % V_Y
-                        [0,0,0,0,0,1,0,0,0], % Acc_Y
-                        [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
-                        [0,0,0,0,0,0,0,1,Dtpos], % V_Z
-                        [0,0,0,0,0,0,0,0,1] % Acc_Z
-                    ]),
+                            % kalman position
+                            F = mat:matrix([
+                                [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
+                                [0,1,Dtpos,0,0,0,0,0,0], % V_X
+                                [0,0,1,0,0,0,0,0,0], % Acc_X
+                                [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
+                                [0,0,0,0,1,Dtpos,0,0,0], % V_Y
+                                [0,0,0,0,0,1,0,0,0], % Acc_Y
+                                [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
+                                [0,0,0,0,0,0,0,1,Dtpos], % V_Z
+                                [0,0,0,0,0,0,0,0,1] % Acc_Z
+                            ]),
 
-                    Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL]),
-                    H = mat:matrix([
-                        [0,0,0,1,0,0,0,0,0], % mesure Y
-                        [0,0,0,0,0,0,1,0,0],  % mesure Z
-                        [0,0,1,0,0,0,0,0,0], %Acc x
-                        [0,0,0,0,0,1,0,0,0],  %ACC y   
-                        [0,0,0,0,0,0,0,0,1]  % mesure Y
+                            Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL]),
+                            H = mat:matrix([
+                                [0,0,0,1,0,0,0,0,0], % mesure Y
+                                [0,0,0,0,0,0,1,0,0],  % mesure Z
+                                [0,0,1,0,0,0,0,0,0], %Acc x
+                                [0,0,0,0,0,1,0,0,0],  %ACC y   
+                                [0,0,0,0,0,0,0,0,1]  % mesure Y
 
-                    ]),
-                
-                    {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
+                            ]),
+                        
+                            {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
 
-                    [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
+                            [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
 
-                    Z = mat:matrix([[Xout],[Yout],[Axlin],[Aylin],[Azlin]]),
-                    R = mat:diag([?VAR_S, ?VAR_S,?VAR_AZ,?VAR_AZ,?VAR_AZ]),
+                            Z = mat:matrix([[Xout],[Yout],[Axlin],[Aylin],[Azlin]]),
+                            R = mat:diag([?VAR_S, ?VAR_S,?VAR_AZ,?VAR_AZ,?VAR_AZ]),
 
 
-                    {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
+                            {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
+                            
+                            
+                            Xarray1 = mat:to_array(Xnew),
+
+
+                            [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
+                            AccLin2 = [[Axxlin, Ayylin, Azzlin]],
+
+
+                            {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
+
+                            Xarray2 = mat:to_array(Xor1),
+                            
+                            % Pour visualiser il faut utiliser le yaw =>
+                            Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
+
+                            YawDegrees = Yaw1 * ?RAD_TO_DEG,
+
+                            
+                            
+                            Xarray = Xarray1 ++ Xarray2,
+
+                            NewState = #{ 
+                                t0   => T1,
+                                x_pos => Xnew,
+                                p_pos => Pnew,
+                                x_or => Xor1,
+                                p_or => Por1,
+                                yaw => Yaw1,
+                                seq  => Seq +1,
+                                seqS1 => Seqsensor1,
+                                seqS2 => Seqsensor2
+
+                            },
+                            
+                            hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
+                            send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
+
+                            {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState};
+                        {false} ->
+                            Dtpos = (T1 - T0)/1000,
+
                     
+                        F = mat:matrix([
+                            [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
+                            [0,1,Dtpos,0,0,0,0,0,0], % V_X
+                            [0,0,1,0,0,0,0,0,0], % Acc_X
+                            [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
+                            [0,0,0,0,1,Dtpos,0,0,0], % V_Y
+                            [0,0,0,0,0,1,0,0,0], % Acc_Y
+                            [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
+                            [0,0,0,0,0,0,0,1,Dtpos], % V_Z
+                            [0,0,0,0,0,0,0,0,1] % Acc_Z
+                        ]),
+
+                        Q = mat:diag([?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction, ?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction, ?VAR_P*correction, ?VAR_P*correction, ?VAR_AL*correction]),
+                        
+                        H = mat:matrix([
+                            [0,0,1,0,0,0,0,0,0], %Acc x
+                            [0,0,0,0,0,1,0,0,0],  %ACC y   
+                            [0,0,0,0,0,0,0,0,1]  % mesure Y
+
+                        ]),
                     
-                    Xarray1 = mat:to_array(Xnew),
+                        {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
+
+                        [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
+
+                        Z = mat:matrix([[Axlin],[Aylin],[Azlin]]),
+                        R = mat:diag([?VAR_AZ,?VAR_AZ,?VAR_AZ]),
 
 
-                    [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
-                    AccLin2 = [[Axxlin, Ayylin, Azzlin]],
-
-
-                    {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
-
-                    Xarray2 = mat:to_array(Xor1),
-                    
-                    % Pour visualiser il faut utiliser le yaw =>
-                    Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
-
-                    YawDegrees = Yaw1 * ?RAD_TO_DEG,
+                        {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
 
                     
-                    
-                    Xarray = Xarray1 ++ Xarray2,
+                        
+                        
+                        [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
+                        AccLin2 = [[Axxlin, Ayylin, Azzlin]],
 
-                    NewState = #{ 
-                        t0   => T1,
-                        x_pos => Xnew,
-                        p_pos => Pnew,
-                        x_or => Xor1,
-                        p_or => Por1,
-                        yaw => Yaw1,
-                        seq  => Seq +1
-                    },
-                    
-                    hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
-                    send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
+                        {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
 
-                    {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState}
+                        Xarray2 = mat:to_array(Xor1),
+                        
+                        % Pour visualiser il faut utiliser le yaw =>
+                        Yaw1 = quat_to_yaw(normalize_quat(Xor1)), 
+
+                        YawDegrees = Yaw1 * ?RAD_TO_DEG,
+
+                        
+                        Xarray1 = mat:to_array(Xnew),
+                        Xarray = Xarray1 ++ Xarray2,
+
+                        NewState = #{ 
+                            t0   => T1,
+                            x_pos => Xnew,
+                            p_pos => Pnew,
+                            x_or => Xor1,
+                            p_or => Por1,
+                            yaw => Yaw1,
+                            seq  => Seq +1,
+                            seqS1 => SeqS1,
+                            seqS2 => Seqs2
+                        },
+                        
+                        hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
+                        send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
+
+                        {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState}
+                end 
             end
     end.               
 %============================================================================================================================================
@@ -264,11 +345,11 @@ get_new_robot_pos(Room) ->
     %io:format("[KALMAN_MEASURE] The two sensors in the current room are : ~p and ~p ~n",[Sensor1, Sensor2]),
     {X1, Y1, _} = get_sensor_pos(Sensor1),
     {X2, Y2, _} = get_sensor_pos(Sensor2),
-    [{_, _, _, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
-    [{_, _, _, [Dist2]}] = hera_data:get(distance, Sensor2),
+    [{_, _, Seqsensor1, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
+    [{_, _, Seqsensor2, [Dist2]}] = hera_data:get(distance, Sensor2),
     {TLx, TLy, BRx, BRy} = get_room_info(Room),
-    get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}).
-    
+    {get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}),{Seqsensor1,Seqsensor2}}.
+
 get_room_sensors(Room) ->
     Devices = persistent_term:get(devices),
     lists:foldl(
