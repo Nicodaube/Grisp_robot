@@ -51,7 +51,7 @@ await_connection(Id) ->
             io:format("[SENSOR] WiFi setup done~n~n"),
             [grisp_led:flash(L, white, 1000) || L <- [1, 2]],
             discover_server(Id)
-    after 18000 ->
+    after 23000 ->
         io:format("[SENSOR] WiFi setup failed:~n~n"),
         [grisp_led:flash(L, red, 750) || L <- [1, 2]],
         await_connection(Id)
@@ -66,7 +66,13 @@ discover_server(Id) ->
             {ok, Ip} = inet:parse_address(SIp),
             IntPort = list_to_integer(Port),
             hera_com:add_device(list_to_atom(Name), Ip, IntPort),
-            ack_loop(Id)
+            ack_loop(Id);
+        {hera_notify, "disconnected"} -> % Received when hera looses WiFi connection
+            io:format("~n[SENSOR] Lost connection ...~n"),
+            [grisp_led:flash(L, red, 750) || L <- [1, 2]],
+            await_connection(Id);
+        Msg ->
+            io:format("~p~n",[Msg])
     after 9000 ->
         io:format("[SENSOR] no ping from server~n~n"),
         discover_server(Id)
@@ -130,6 +136,10 @@ loop_config(Id) ->
         {hera_notify, ["Exit"]} -> % Received when the controller is exited
             io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
+        {hera_notify, "disconnected"} -> % Received when hera looses WiFi connection
+            io:format("~n[SENSOR] Lost connection, standing by ...~n"),
+            [grisp_led:flash(L, red, 1000) || L <- [1, 2]],
+            loop_config(Id);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop_config(Id);
         {hera_notify, Msg} -> % Unhandled Message
@@ -151,6 +161,10 @@ loop_run(Id, Num) ->
             reset_state(Id);
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation            
             io:format("[SENSOR] Already started~n"),
+            loop_run(Id, Num);
+        {hera_notify, "disconnected"} -> % Received when hera looses WiFi connection
+            io:format("~n[SENSOR] Lost connection, standing by ...~n"),
+            [grisp_led:flash(L, red, 1000) || L <- [1, 2]],
             loop_run(Id, Num);
         {hera_notify, ["ping", _, _, _]} -> % Ignore the pings after server discovery
             loop_run(Id, Num);
