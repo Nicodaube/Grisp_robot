@@ -115,7 +115,7 @@ loop_run() ->
     receive
         {hera_notify, ["Start", _]} -> % Received at the end of the configuration to launch the simulation
             io:format("~n[ROBOT] Already started~n"),
-            loop_run;
+            loop_run();
         {hera_notify, ["Exit"]} -> % Received when gracefully exited the controller
             io:format("~n[ROBOT] Exit message received~n"),
             reset_state();
@@ -199,7 +199,6 @@ store_sensor_position(Ids, Xs, Ys, Hs, As, RoomS) ->
             hera_data:store(pos, SensorName, 1, [X, Y, H, A])
     end,
     
-    %io:format("[ROBOT] Sensor's ~p position : (~p,~p) in room n°~p~n",[ParsedId,X,Y, Room]),
     loop_config().
 
 store_room_info(RoomIdS, TLxS, TLyS, BRxS, BRyS) ->
