@@ -3,10 +3,9 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0).
--define(SMOOTHING_WINDOW, 7).
--define(HAMPEL_WINDOW, 10).
--define(N_SIG, 3.0).
+-define(LPF_ALPHA, 0.3).
+-define(HAMPEL_WINDOW, 8).
+-define(N_SIG, 1.5).
 
 -export([init/1, measure/1]).
 
@@ -22,7 +21,6 @@ init(_Args) ->
         seq => get_init_seq(),
         last_measure => none,
         hampel_buffer => [],
-        smooth_buffer => [],
         n_sig => ?N_SIG
     },
     {ok, State, #{name=>sonar_sensor, iter=>infinity}}.
@@ -34,12 +32,11 @@ measure(State) ->
                 seq := Seq,
                 last_measure := _,
                 hampel_buffer := _,
-                smooth_buffer := _,
                 n_sig := _
             } = State,
 
             SensorName = persistent_term:get(sensor_name),
-            {Measure, Hampel_buffer, Smooth_buffer} = get_measure(State),
+            {Measure, Hampel_buffer} = get_measure(State),
             hera_com:send_unicast(server, "Distance,"++float_to_list(Measure)++","++atom_to_list(SensorName),"UTF8"),
 
             hera_data:store(distance, SensorName, Seq, [Measure]),
@@ -47,8 +44,7 @@ measure(State) ->
             NewState = State#{
                 seq => Seq+1,
                 last_measure => Measure,
-                hampel_buffer => Hampel_buffer,
-                smooth_buffer => Smooth_buffer
+                hampel_buffer => Hampel_buffer
             },
             {ok, [Measure], distance, SensorName, NewState}
     end.
@@ -129,13 +125,17 @@ get_measure(State) ->
     Dist_inch = pmod_maxsonar:get(),
     Dist_cm = Dist_inch * 2.54,    
     SensorName = persistent_term:get(sensor_name),
+    io:format("SONAR DIST : ~p~n", [Dist_cm]),
+    LPF_filtered = low_pass_filter(Dist_cm, State),
+    io:format("LPF FILTERED: ~p~n", [LPF_filtered]),
+    {Hampel_Measure, Hampel_buffer} = hampel_filter(LPF_filtered, State),
+    io:format("HAMPEL MEASURE : ~p~n", [Hampel_Measure]),
+    io:format("HAMPEL BUFFER : ~p~n", [Hampel_buffer]),
 
-    case get_ground_distance(SensorName, Dist_cm) of
+    case get_ground_distance(SensorName, Hampel_Measure) of
         {ok, Ground_measure} ->
-            LPF_filtered = low_pass_filter(Ground_measure, State),
-            {Hampel_filtered, Hampel_buffer} = hampel_filter(LPF_filtered, State),
-            {Smoothed_Measure, Smooth_buffer} = smooth_measure(Hampel_filtered, State),
-            {Smoothed_Measure, Hampel_buffer, Smooth_buffer};
+            io:format("GROUND DIST : ~p~n", [Ground_measure]),
+            {Ground_measure, Hampel_buffer};
         {stop, cannot_get_height} ->
             {stop, cannot_get_height}
     end.
@@ -148,10 +148,15 @@ get_ground_distance(SensorName, D) ->
 
     case hera_data:get(pos, SensorName) of
         [{_, _, _, [_ , _, H, _]}] ->
-
+            Height_diff = (H*100)-?ROBOT_HEIGHT,
             if
-                H > ?ROBOT_HEIGHT ->
-                    Ground_measure = math:sqrt(math:pow(D, 2) - math:pow((H*100)-?ROBOT_HEIGHT, 2)); % Taking the height of the sonar into account
+                H*100 > ?ROBOT_HEIGHT ->
+                    if 
+                        D > Height_diff -> 
+                            Ground_measure = math:sqrt(math:pow(D, 2) - math:pow(Height_diff, 2)); % Taking the height of the sonar into account
+                        true ->
+                            Ground_measure = Height_diff
+                    end;
                 true ->
                     Ground_measure = D % The robot is bigger than the sensor's height, no need for correction
             end,           
@@ -167,7 +172,6 @@ low_pass_filter(Ground_measure, State) ->
       seq := _,
       last_measure := Last,
       hampel_buffer := _,
-      smooth_buffer := _,
       n_sig := _
     } = State,
 
@@ -181,7 +185,6 @@ hampel_filter(Measure, State) ->
       seq := _,
       last_measure := _,
       hampel_buffer := BufH,
-      smooth_buffer := _,
       n_sig := N_sig
     } = State,
 
@@ -194,18 +197,6 @@ hampel_filter(Measure, State) ->
         true ->
             {Measure, New_BufH}
     end.
-
-smooth_measure(Measure, State) ->
-    #{
-      seq := _,
-      last_measure := _,
-      hampel_buffer := _,
-      smooth_buffer := BufS,
-      n_sig := _
-    } = State,
-
-    New_BufS = append_buf(BufS, Measure, ?SMOOTHING_WINDOW),
-    {median(New_BufS), New_BufS}.
 %============================================================================================================================================
 %=========================================================== HELPER FUNC ====================================================================
 %============================================================================================================================================
