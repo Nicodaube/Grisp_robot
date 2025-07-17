@@ -3,9 +3,10 @@
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.3).
--define(HAMPEL_WINDOW, 8).
--define(N_SIG, 1.5).
+-define(LPF_ALPHA, 0.1).
+-define(SMOOTHING_WINDOW, 6).
+-define(HAMPEL_WINDOW, 7).
+-define(N_SIG, 2.0).
 
 -export([init/1, measure/1]).
 
@@ -21,30 +22,35 @@ init(_Args) ->
         seq => get_init_seq(),
         last_measure => none,
         hampel_buffer => [],
+        smoothing_buffer => [],
         n_sig => ?N_SIG
     },
     {ok, State, #{name=>sonar_sensor, iter=>infinity}}.
     
 measure(State) ->  
+    io:format("[SONAR] Start measurement"),
     receive
         clock ->
             #{
                 seq := Seq,
                 last_measure := _,
                 hampel_buffer := _,
+                smoothing_buffer := _,
                 n_sig := _
             } = State,
 
             SensorName = persistent_term:get(sensor_name),
-            {Measure, Hampel_buffer} = get_measure(State),
+            {Measure, LPFMeasure, Hampel_buffer, Smoothing_buffer} = get_measure(State),
             hera_com:send_unicast(server, "Distance,"++float_to_list(Measure)++","++atom_to_list(SensorName),"UTF8"),
 
             hera_data:store(distance, SensorName, Seq, [Measure]),
 
             NewState = State#{
                 seq => Seq+1,
-                last_measure => Measure,
-                hampel_buffer => Hampel_buffer
+                last_measure => LPFMeasure,
+                hampel_buffer => Hampel_buffer,
+                smoothing_buffer => Smoothing_buffer,
+                n_sig := ?N_SIG
             },
             {ok, [Measure], distance, SensorName, NewState}
     end.
@@ -127,15 +133,13 @@ get_measure(State) ->
     SensorName = persistent_term:get(sensor_name),
     io:format("SONAR DIST : ~p~n", [Dist_cm]),
     LPF_filtered = low_pass_filter(Dist_cm, State),
-    io:format("LPF FILTERED: ~p~n", [LPF_filtered]),
     {Hampel_Measure, Hampel_buffer} = hampel_filter(LPF_filtered, State),
     io:format("HAMPEL MEASURE : ~p~n", [Hampel_Measure]),
-    io:format("HAMPEL BUFFER : ~p~n", [Hampel_buffer]),
+    {Smoothed_measure, Smoothing_buffer} = smooth_measure(Hampel_Measure, State),
 
-    case get_ground_distance(SensorName, Hampel_Measure) of
+    case get_ground_distance(SensorName, Smoothed_measure) of
         {ok, Ground_measure} ->
-            io:format("GROUND DIST : ~p~n", [Ground_measure]),
-            {Ground_measure, Hampel_buffer};
+            {Ground_measure, LPF_filtered, Hampel_buffer, Smoothing_buffer};
         {stop, cannot_get_height} ->
             {stop, cannot_get_height}
     end.
@@ -172,6 +176,7 @@ low_pass_filter(Ground_measure, State) ->
       seq := _,
       last_measure := Last,
       hampel_buffer := _,
+      smoothing_buffer := _,
       n_sig := _
     } = State,
 
@@ -185,6 +190,7 @@ hampel_filter(Measure, State) ->
       seq := _,
       last_measure := _,
       hampel_buffer := BufH,
+      smoothing_buffer := _,
       n_sig := N_sig
     } = State,
 
@@ -197,6 +203,18 @@ hampel_filter(Measure, State) ->
         true ->
             {Measure, New_BufH}
     end.
+
+smooth_measure(Measure, State) ->
+    #{
+      seq := _,
+      last_measure := _,
+      hampel_buffer := _,
+      smoothing_buffer := BufS,
+      n_sig := _
+    } = State,
+
+    New_BufS = append_buf(BufS, Measure, ?SMOOTHING_WINDOW),
+    {median(New_BufS), New_BufS}.
 %============================================================================================================================================
 %=========================================================== HELPER FUNC ====================================================================
 %============================================================================================================================================

@@ -212,7 +212,6 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     % @param SPosY : Y axis position (String)
     % @param SAngle : Robot angle (String)
     % @param SRoom : Robot room position (String)
-    SelfName = persistent_term:get(sensor_name),
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
     Angle = list_to_integer(SAngle),
@@ -222,7 +221,7 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
         [{_, _, _, [_, _, _, _]}] ->
             ok;
         [] ->
-            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room])
+            hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room])
     end,        
     loop_config(Id).
 
