@@ -10,15 +10,17 @@
 %%% incertitude dynamique (Q) %%%
 % plus c’est petit, plus tu fais confiance à ton modèle %
 -define(VAR_P, 0.005).   % variance sur X et Y
--define(VAR_Q, 0.005).   % variance sur θ essayé X10
+-define(VAR_Q, 0.05).   % variance sur θ essayé X10
 
 %%% fiabilité capteur (R) %%%
 % plus c’est petit, plus tu fais confiance en la mesure %
--define(VAR_S, 0.01).  % variance sonar X et Y (≈ std² 0.00867)
--define(VAR_R, 0.01).  % variance gyroscope (≈ std² 0.06208) essayer X10
+-define(VAR_S, 0.05).  % variance sonar X et Y (≈ std² 0.00867)
+-define(VAR_R, 0.05).  % variance gyroscope (≈ std² 0.06208) essayer X10
 -define(VAR_B, 0.02).    % variance process biais b (rad²)
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
+-define(DEG_TO_RAD, math:pi()/180.0).
+
 -define(BETA, 0.05).
 
 init(_Args) ->
@@ -32,7 +34,7 @@ init(_Args) ->
     State = #{
         t0 => erlang:system_time()/1.0e6,
         x_pos => mat:matrix([[0],[0],[0],[0]]),
-        p_pos => mat:diag([10,10,10,1]),
+        p_pos => mat:diag([1,1,1,1]),
         yaw => mat:eye(1),
         seq => 2,
         seqS1 => 2,
@@ -63,14 +65,15 @@ measure(State) ->
             
             {V_mes_mm,_} = i2c_read(),
             V_mes = V_mes_mm / 100,
-            {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt,V_mes),
-            [_Omega,_,_] = mat:to_array(Gyro),
+            {_Acc, _Acclin, Gyro, _Mag, _R0} = get_val_nav(Dt),
+            [Omega,_,_] = mat:to_array(Gyro),
             io:format("Voici la vitesse à l'instant t ~p, DT : ~p ~n", [V_mes,Dt]),
            
             % Estimation theta absolue %
             Quat = persistent_term:get(ahrs_quat),
-            [_Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
-            Theta_mes = 0,
+            [Roll,_Pitch,_Yaw] = quat_to_euler(Quat),
+            Theta_mes = - Roll,
+            io:format("theta_mes = ~p ~n", [Roll * ?RAD_TO_DEG]),
             
             %[_Axx,Ayy,Azz] = mat:to_array(Acc),
             %Roll_acc = math:atan2(Ayy, -Azz),
@@ -85,20 +88,18 @@ measure(State) ->
             % Fonction de transition f(x)
           
             F = fun(X) ->
-                [Yc, _Zc, _Thetac,_B] = mat:to_array(X),
-                Thetacc = 0,
-                io:format("ThetaC : ~p ~n",[Thetacc * ?RAD_TO_DEG]),
-                Yp = Yc - V_mes * math:cos(Thetacc) * Dt,
+                [Yc, Zc, Thetac,B] = mat:to_array(X),
+                io:format("ThetaC : ~p ~n",[Thetac * ?RAD_TO_DEG]),
+                Yp = Yc - V_mes *  math:cos(Thetac)* Dt,
                 %io:format("ThetaC : ~p et cos(thetaC) : ~p ~n ",[Thetac,math:cos(Thetac)]),
-                %Zp = Zc + V_mes * math:sin(Thetacc) * Dt,
-                Zp = 0.57,
-                %Theta_next = Thetacc + (Omega - B) * Dt,  
-                %io:format("Theta_next : ~p ~n",[Theta_next * ?RAD_TO_DEG]),
+                Zp = Zc - V_mes * math:sin(Thetac) * Dt,
+                
+                Theta_next = Thetac + (-Omega - B) * Dt,  
+                io:format("Theta_next : ~p ~n",[Theta_next * ?RAD_TO_DEG]),
 
-                %Theta = math:atan2(math:sin(Theta_next), math:cos(Theta_next)),  
-                %io:format("Theta ~p ~n",[Theta * ?RAD_TO_DEG]),
-
-                mat:matrix([[Yp], [Zp], [0],[0]])
+                Theta = math:atan2(math:sin(Theta_next), math:cos(Theta_next)),  
+                io:format("Theta ~p ~n",[Theta * ?RAD_TO_DEG]),
+                mat:matrix([[Yp], [Zp], [Theta],[B]])
             end,
             
             % Jacobienne de f
@@ -106,12 +107,12 @@ measure(State) ->
                 [_,_,Th,_B] = mat:to_array(X),
                 mat:matrix([
                 [1, 0, V_mes*math:sin(Th)*Dt,    0],
-                %[0, 1, V_mes*math:cos(Th)*Dt ,    0],
-                [0, 0,                       0,   0],
-                [0, 0,                       1,   0],
+                [0, 1, - V_mes*math:cos(Th)*Dt ,    0],
+                [0, 0,                       1,   -Dt],
                 [0, 0,                       0,   1]
                 ])
             end,
+
             {Xpred,Ppred} = hera_kalman:extended_predict({Xpos, Ppos}, {F, Jf}, Q),
             
             case get_new_robot_pos(OldRoom) of
@@ -135,10 +136,9 @@ measure(State) ->
                     %io:format("seq1 : ~p, seq2  : ~p~n", [Seqsensor1,Seqsensor2]),
                     case {SeqS1 < Seqsensor1 andalso SeqS2 < Seqsensor2} of
                         {true} ->
-                            io:format("######################## Boucle mesure avec donnée sonar ###################"),
 
                             Z = mat:matrix([[X_mes], [Y_mes],[Theta_mes]]),
-                            %io:format("Y_miam : ~p, Z_miam : ~p~n", [X_mes,Y_mes]),
+                            io:format("######Y_miam : ~p, Z_miam : ~p, theta : ~p~n#######", [X_mes,Y_mes,Theta_mes * ?RAD_TO_DEG]),
 
                             R  = mat:diag([?VAR_S, ?VAR_S, ?VAR_R]),
 
@@ -146,8 +146,9 @@ measure(State) ->
                             % Fonction de mesure h(x) = x
                             H = fun(X) ->
                             % X4 = [X;Y;θ;b], on ne prend que les trois premières lignes
-                                [Xc, Yc, _Th, _B] = mat:to_array(X),
-                                mat:matrix([[Xc],[Yc],[0]])
+                                [Xc, Yc, Th, _B] = mat:to_array(X),
+
+                                mat:matrix([[Xc],[Yc],[Th]])
                             end,
                             Jh = fun(_X) ->
                                 % jacobienne 3×4 de la mesure
@@ -177,7 +178,7 @@ measure(State) ->
                         {false} ->
                             
                             [Xf, Yf, Thetaf,_Bw] = mat:to_array(Xpred),
-                            ThetaDegrees =  Thetaf * ?RAD_TO_DEG,
+                            ThetaDegrees = Thetaf * ?RAD_TO_DEG,
                             %io:format("False : ~p ~n", [ThetaDegrees]),
 
                             NewState = #{ 
@@ -199,7 +200,7 @@ measure(State) ->
             Room = determine_robot_room(Xf, Yf, OldRoom),
             hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
             send_robot_pos([Xf, Yf,  ThetaDegrees, Room]),
-
+            io:format("Thetafinal envoyé ~p~n", [ThetaDegrees]),
             {ok, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState};
         [] ->
             {undefined, State}
@@ -364,7 +365,7 @@ determine_robot_room(X, Y, OldRoom, RoomNum) ->
             OldRoom
     end.
 
-get_val_nav(Dt,V_mes) ->
+get_val_nav(Dt) ->
     [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
     [Gx, Gy, Gz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]),
     [Mx, My, Mz] = pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]),
@@ -385,22 +386,13 @@ get_val_nav(Dt,V_mes) ->
     Gyro2 = scale([-(Gz-GBz),-(Gy-GBy),Gx-GBx],math:pi()/180),
     Acc2 = scale([-(Az - Az0), -(Ay - Ay0), Ax - Ax0], 9.81),
 
-    %R0 = ahrs([Ax,Ay,-Az], [-(Mx-MBx),My-MBy,-(Mz-MBz)]),
-    if 
-        V_mes > 0.0 ->
-            Quat0 = persistent_term:get(ahrs_quat),
-            R0 = quat_to_matrix(Quat0);
-            
-        true ->
-            Quat0 = persistent_term:get(ahrs_quat),
-            Quat1 = update(Gyro2, Acc2, mat:to_array(Mag2),Dt, Quat0),
-            Quat1_norm = normalize(Quat1),
-            R0 = quat_to_matrix(Quat1_norm),
-            persistent_term:put(ahrs_quat, Quat1_norm)
-            
-    end,
 
-    
+    Quat0 = persistent_term:get(ahrs_quat),
+    Quat1 = update(Gyro2, Acc2, mat:to_array(Mag2),Dt, Quat0),
+    Quat1_norm = normalize(Quat1),
+    R0 = quat_to_matrix(Quat1_norm),
+    persistent_term:put(ahrs_quat, Quat1_norm),
+            
     
      %check quand meme si acc et ro pour avoir meme dim
     AccRot = mat:'*'(mat:matrix([Acc]), mat:tr(R0)),  % rotation dans le repère monde
