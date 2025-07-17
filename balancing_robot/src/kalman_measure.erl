@@ -196,11 +196,11 @@ measure(State) ->
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            io:format("Voici le theta final ~p ~n", [ThetaDegrees]),
-            hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, OldRoom]),
-            send_robot_pos([Xf, Yf,  ThetaDegrees, OldRoom]),
+            Room = determine_robot_room(Xf, Yf, OldRoom),
+            hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
+            send_robot_pos([Xf, Yf,  ThetaDegrees, Room]),
 
-            {ok, [Xf,Yf, ThetaDegrees, OldRoom], robot_pos, robot, NewState};
+            {ok, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState};
         [] ->
             {undefined, State}
     
@@ -347,6 +347,22 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
+
+determine_robot_room(X, Y, OldRoom) ->
+    determine_robot_room(X, Y, OldRoom, 0).
+determine_robot_room(X, Y, OldRoom, RoomNum) ->
+    case hera_data:get(room_info, RoomNum) of
+        [{_, _, _, [TLx, TLy, BRx, BRy]}] ->
+            if 
+                (X > TLx andalso X < BRx) andalso (Y > TLy andalso Y < BRy) ->
+                    RoomNum;
+                true ->
+                    determine_robot_room(X, Y, OldRoom, RoomNum+1)
+            end;
+        [] ->
+            io:format("[KALMAN_MEASURE] Error: Not in a known room~n"),
+            OldRoom
+    end.
 
 get_val_nav(Dt,V_mes) ->
     [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
