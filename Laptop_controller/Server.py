@@ -200,6 +200,7 @@ class Server:
             self.send_robot_info()
         
             time.sleep(1)
+            self.started = True
             for i in range(4):
                 message = "Start " + self.HOST
                 self.send(message, "brd")
@@ -317,14 +318,30 @@ class Server:
 
         self.sensors.get(id).update_height(height)
 
-    def update_robot(self, real_pos, angle, room):
+    def update_robot(self, real_pos, angle):
         # Updates the robot position
         # @param real_pos: the position of the robot on the grid (Tuple)
         # @param angle: the angle of the robot (0 <= Integer <= 360)
         # @param room: the room in which the robot is placed (Integer)
         
-        self.robot.update_pos(real_pos[0], real_pos[1], angle, room.room_num)
+        self.robot.update_pos(real_pos[0], real_pos[1], angle, self.determine_robot_room(real_pos[0], real_pos[1]))
 
     def add_edges(self, TLpos, BRpos):
 
         self.room_edges.append((TLpos, BRpos))
+
+#==========================================================================================================================================
+#============================================================= HELPER FUNCTION ==========================================================
+#==========================================================================================================================================
+
+    def determine_robot_room(self, x, y):
+        for room_idx in range(len(self.room_edges)):
+            if self.is_in_x_range(x, room_idx) and self.is_in_y_range(y, room_idx):
+                return room_idx
+        return -1
+    
+    def is_in_x_range(self, x, room_idx):
+        return x > self.room_edges[room_idx][0][0] and x < self.room_edges[room_idx][1][0]
+    
+    def is_in_y_range(self, y, room_idx):
+        return y > self.room_edges[room_idx][0][1] and y < self.room_edges[room_idx][1][1]

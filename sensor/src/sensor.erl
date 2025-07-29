@@ -183,7 +183,7 @@ loop_run(Id, Num) ->
 %============================================================================================================================================
 
 tick(Id, Num) ->
-    Pid = persistent_term:get(sonar_sensor),
+    Pid = persistent_term:get(sonar_measure),
     Pid ! clock,
     loop_run(Id, Num).
 
@@ -212,7 +212,6 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     % @param SPosY : Y axis position (String)
     % @param SAngle : Robot angle (String)
     % @param SRoom : Robot room position (String)
-    SelfName = persistent_term:get(sensor_name),
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
     Angle = list_to_integer(SAngle),
@@ -222,7 +221,7 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
         [{_, _, _, [_, _, _, _]}] ->
             ok;
         [] ->
-            hera_data:store(robot_pos, SelfName, 1, [Posx, Posy, Angle, Room])
+            hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room])
     end,        
     loop_config(Id).
 
@@ -283,8 +282,8 @@ start_measures(Id) ->
     io:format("=================================================================================================~n"),
     io:format("~n~n[SENSOR] Start received, starting the computing phase~n"),
     find_other_sensor(),
-    {ok, Sonar_Pid} = hera:start_measure(sonar_sensor, []),
-    persistent_term:put(sonar_sensor, Sonar_Pid),
+    {ok, Sonar_Pid} = hera:start_measure(sonar_measure, []),
+    persistent_term:put(sonar_measure, Sonar_Pid),
            
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop_run(Id, 0).
@@ -294,7 +293,7 @@ resolve_handshake(Id, Num, OPriority, OTimeClock) ->
     % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param OPriority : Other sensor's random priority (String)
     % @param OTimeclock : Other sensor's time clock (String)
-    Pid = persistent_term:get(sonar_sensor, none),
+    Pid = persistent_term:get(sonar_measure, none),
     case Pid of
         none ->
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
@@ -308,7 +307,7 @@ resolve_handshake(Id, Num, OPriority, OTimeClock) ->
 end_handshake(Id, Num)->
 % Sends a ok message to signify the end of the handshake procedure
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    Pid = persistent_term:get(sonar_sensor, none),
+    Pid = persistent_term:get(sonar_measure, none),
     case Pid of
         none -> 
             io:format("[SENSOR] Error : Sonar sensor has not spawned~n"),
@@ -322,7 +321,7 @@ end_handshake(Id, Num)->
 reset_state(Id) ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    exit_module(sonar_sensor),
+    exit_module(sonar_measure),
     exit_module(clock),
 
     timer:sleep(500),
@@ -337,7 +336,7 @@ reset_state(Id) ->
 reset_data() ->
     % Delete all config dependent and hera_measures data
     persistent_term:erase(osensor),
-    persistent_term:erase(sonar_sensor),
+    persistent_term:erase(sonar_measure),
     persistent_term:erase(sensor_role),
     hera_com:reset_devices(),    
     hera_data:reset(),

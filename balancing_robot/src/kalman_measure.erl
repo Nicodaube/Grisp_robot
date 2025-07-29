@@ -32,7 +32,8 @@ init(_Args) ->
         yaw => mat:eye(1),
         seq => 2,
         seqS1 => 2,
-        seqS2 => 2
+        seqS2 => 2,
+        must_wait => false
     },
 
     {ok, State, #{
@@ -51,10 +52,11 @@ measure(State) ->
         yaw := _Yaw,
         seq  := Seq,
         seqS1 := SeqS1,
-        seqS2 := Seqs2
-        
+        seqS2 := Seqs2,
+        must_wait := Wait        
     } = State,
 
+    io:format("start mesure ~n"),
     case hera_data:get(robot_pos, robot) of 
         [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
             T1 = hera:timestamp(),
@@ -62,12 +64,17 @@ measure(State) ->
             Rorien = q2dcm(mat:to_array(Xor)),
             {Acc,Acclin,Gyro,Mag,R0} = get_val_nav(Rorien),
             Correction = 1,
-            
+            if 
+                Wait ->
+                    io:format("[KALMAN MEASURE] Entered new room, waiting~n"),
+                    timer:sleep(200);
+                true ->
+                    ok
+            end,
             case get_new_robot_pos(OldRoom) of
                 {no_intersection, { _, _}} ->
                     Dtpos = (T1 - T0)/1000,
 
-                    
                     F = mat:matrix([
                         [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
                         [0,1,Dtpos,0,0,0,0,0,0], % V_X
@@ -118,6 +125,15 @@ measure(State) ->
                     Xarray1 = mat:to_array(Xnew),
                     Xarray = Xarray1 ++ Xarray2,
 
+                    Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
+                    Next_wait = if 
+                        Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
+                        true -> false
+                    end,
+                    
+                    hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
+                    send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
+
                     NewState = #{ 
                         t0   => T1,
                         x_pos => Xnew,
@@ -127,19 +143,16 @@ measure(State) ->
                         yaw => Yaw1,
                         seq  => Seq +1,
                         seqS1 => SeqS1,
-                        seqS2 => Seqs2
+                        seqS2 => Seqs2,
+                        must_wait => Next_wait
                     },
-                    
-                    hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
-                    send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
 
-                    {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState};
+                    {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState};
                     
                 {{Xout, Yout},{Seqsensor1,Seqsensor2}} ->
-                    case {SeqS1 < Seqsensor1 andalso Seqs2 =< Seqsensor2} of
+                    case {SeqS1 < Seqsensor1 andalso Seqs2 < Seqsensor2} of
                         {true} ->
                             Dtpos = (T1 - T0)/1000,
-
 
                             % kalman position
                             F = mat:matrix([
@@ -189,12 +202,18 @@ measure(State) ->
                             % Pour visualiser il faut utiliser le yaw =>
                             Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
 
-                            YawDegrees = Yaw1 * ?RAD_TO_DEG,
-
-                            
+                            YawDegrees = Yaw1 * ?RAD_TO_DEG,                            
                             
                             Xarray = Xarray1 ++ Xarray2,
 
+                            Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
+                            Next_wait = if 
+                                Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
+                                true -> false
+                            end,
+
+                            hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
+                            send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
                             NewState = #{ 
                                 t0   => T1,
                                 x_pos => Xnew,
@@ -204,18 +223,14 @@ measure(State) ->
                                 yaw => Yaw1,
                                 seq  => Seq +1,
                                 seqS1 => Seqsensor1,
-                                seqS2 => Seqsensor2
-
+                                seqS2 => Seqsensor2,
+                                must_wait => Next_wait
                             },
-                            
-                            hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
-                            send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
 
-                            {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState};
+                            {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState};
                         {false} ->
                             Dtpos = (T1 - T0)/1000,
 
-                    
                         F = mat:matrix([
                             [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
                             [0,1,Dtpos,0,0,0,0,0,0], % V_X
@@ -248,8 +263,7 @@ measure(State) ->
                         {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
 
                     
-                        
-                        
+                                  
                         [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
                         AccLin2 = [[Axxlin, Ayylin, Azzlin]],
 
@@ -262,10 +276,18 @@ measure(State) ->
 
                         YawDegrees = Yaw1 * ?RAD_TO_DEG,
 
-                        
                         Xarray1 = mat:to_array(Xnew),
                         Xarray = Xarray1 ++ Xarray2,
 
+                        Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
+                        Next_wait = if 
+                            Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
+                            true -> false
+                        end,
+
+                        hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
+                        
+                        send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
                         NewState = #{ 
                             t0   => T1,
                             x_pos => Xnew,
@@ -275,13 +297,11 @@ measure(State) ->
                             yaw => Yaw1,
                             seq  => Seq +1,
                             seqS1 => SeqS1,
-                            seqS2 => Seqs2
+                            seqS2 => Seqs2,
+                            must_wait => Next_wait
                         },
-                        
-                        hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
-                        send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom]),
 
-                        {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, OldRoom], robot_pos, robot, NewState}
+                        {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState}
                 end 
             end
     end.               
@@ -342,7 +362,6 @@ send_robot_pos(Pos) ->
             
 get_new_robot_pos(Room) ->
     [Sensor1, Sensor2] = get_room_sensors(Room),
-    %io:format("[KALMAN_MEASURE] The two sensors in the current room are : ~p and ~p ~n",[Sensor1, Sensor2]),
     {X1, Y1, _} = get_sensor_pos(Sensor1),
     {X2, Y2, _} = get_sensor_pos(Sensor2),
     [{_, Seqsensor1, _, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
@@ -426,6 +445,21 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
+determine_robot_room(X, Y, OldRoom) ->
+    determine_robot_room(X, Y, OldRoom, 0).
+determine_robot_room(X, Y, OldRoom, RoomNum) ->
+    case hera_data:get(room_info, RoomNum) of
+        [{_, _, _, [TLx, TLy, BRx, BRy]}] ->
+            if 
+                (X > TLx andalso X < BRx) andalso (Y > TLy andalso Y < BRy) ->
+                    RoomNum;
+                true ->
+                    determine_robot_room(X, Y, OldRoom, RoomNum+1)
+            end;
+        [] ->
+            io:format("[KALMAN_MEASURE] Error: Not in a known room~n"),
+            OldRoom
+    end.
 
 q2dcm([Q0, Q1, Q2, Q3]) -> 
     R00 = 2 * (Q0 * Q0 + Q1 * Q1) - 1,
@@ -445,9 +479,6 @@ q2dcm([Q0, Q1, Q2, Q3]) ->
     [R10, R11, R12],
     [R20, R21, R22]
     ]).
-
-
-
 
 unit(Vec) ->
     Norm = math:sqrt(lists:sum([X*X || X <- Vec])),
@@ -501,8 +532,6 @@ get_val_nav(R) ->
     R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
     mat:tr(R0),
     {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
-
-
 
 
 quat_to_yaw([[Q0], [Q1], [Q2], [Q3]]) ->
