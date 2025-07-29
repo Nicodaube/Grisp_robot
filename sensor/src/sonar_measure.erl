@@ -1,12 +1,12 @@
--module(sonar_sensor).
+-module(sonar_measure).
 
 -behavior(hera_measure).
 
 -define(ROBOT_HEIGHT, 23).
--define(LPF_ALPHA, 0.1).
--define(SMOOTHING_WINDOW, 6).
+-define(LPF_ALPHA, 0.2).
+-define(SMOOTHING_WINDOW, 3).
 -define(HAMPEL_WINDOW, 7).
--define(N_SIG, 2.0).
+-define(N_SIG, 3.0).
 
 -export([init/1, measure/1]).
 
@@ -17,7 +17,7 @@
 init(_Args) ->
     get_sensor_role(),
     timer:sleep(200),
-    io:format("~n[SONAR_SENSOR] Starting measurements~n"),
+    io:format("~n[SONAR_MEASURE] Starting measurements~n"),
     State = #{
         seq => get_init_seq(),
         last_measure => none,
@@ -25,10 +25,9 @@ init(_Args) ->
         smoothing_buffer => [],
         n_sig => ?N_SIG
     },
-    {ok, State, #{name=>sonar_sensor, iter=>infinity}}.
+    {ok, State, #{name=>sonar_measure, iter=>infinity}}.
     
 measure(State) ->  
-    io:format("[SONAR] Start measurement"),
     receive
         clock ->
             #{
@@ -38,6 +37,7 @@ measure(State) ->
                 smoothing_buffer := _,
                 n_sig := _
             } = State,
+            [grisp_led:color(L, green) || L <- [1, 2]],
 
             SensorName = persistent_term:get(sensor_name),
             {Measure, LPFMeasure, Hampel_buffer, Smoothing_buffer} = get_measure(State),
@@ -53,9 +53,11 @@ measure(State) ->
                 n_sig := ?N_SIG
             },
             {ok, [Measure], distance, SensorName, NewState}
+    after 5000 ->
+        [grisp_led:color(L, blue) || L <- [1, 2]],
+        {undefined, State}
     end.
-        
-            
+                 
 %============================================================================================================================================
 %============================================================== ROLE SETUP ==================================================================
 %============================================================================================================================================
@@ -63,7 +65,7 @@ measure(State) ->
 get_sensor_role() ->
     case persistent_term:get(osensor, none) of
         none -> % Is alone in a room
-            io:format("[SONAR_SENSOR] No other sensor, sensor is master~n"),
+            io:format("[SONAR_MEASURE] No other sensor, sensor is master~n"),
             persistent_term:put(sensor_role, master);                     
         Osensor -> % Start Handshake
             case persistent_term:get(sensor_role, none) of
@@ -71,8 +73,8 @@ get_sensor_role() ->
                     {ok, Priority} = get_rand_num(),
                     TimeClock = erlang:monotonic_time(millisecond),
                     role_handshake(Osensor, Priority, TimeClock);
-                _ ->  % Case where the sonar sensor crashed and was reloaded (need to find the latest seq number)
-                    io:format("[SONAR_SENSOR] Recovering from crash"),
+                _ ->  % Case where the sonar measure module crashed and was reloaded (need to find the latest seq number)
+                    io:format("[SONAR_MEASURE] Recovering from crash"),
                     ok
             end
     end.       
@@ -83,17 +85,17 @@ role_handshake(Osensor, Priority, TimeClock) ->
         {handshake, OPriority, _} ->
             if
                 Priority > OPriority ->
-                    io:format("[SONAR_SENSOR] Local priority higher, sensor role : MASTER~n"),                    
+                    io:format("[SONAR_MEASURE] Local priority higher, sensor role : MASTER~n"),                    
                     wait_ack(Osensor),
                     Clock_Pid = spawn(clock_ticker, init, [TimeClock]),
                     persistent_term:put(clock, Clock_Pid),
                     persistent_term:put(sensor_role, master);
                 Priority < OPriority ->
-                    io:format("[SONAR_SENSOR] External priority higher, sensor role : SLAVE~n"),                    
+                    io:format("[SONAR_MEASURE] External priority higher, sensor role : SLAVE~n"),                    
                     wait_ack(Osensor),
                     persistent_term:put(sensor_role, slave);
                 true ->
-                    io:format("[SONAR_SENSOR] Priority collision, retrying~n"),
+                    io:format("[SONAR_MEASURE] Priority collision, retrying~n"),
                     {ok, New_Priority} = get_rand_num(),
                     role_handshake(Osensor, New_Priority, TimeClock)                    
             end;
@@ -122,7 +124,6 @@ get_init_seq() ->
 %============================================================================================================================================
 %========================================================= SONAR MEASURE  ===================================================================
 %============================================================================================================================================
-
 get_measure(State) ->
     % Get the Pmod Maxsonar measure and transform it into the right format
     % @param State : the internal state of the module (tuple)
@@ -134,7 +135,6 @@ get_measure(State) ->
     io:format("SONAR DIST : ~p~n", [Dist_cm]),
     LPF_filtered = low_pass_filter(Dist_cm, State),
     {Hampel_Measure, Hampel_buffer} = hampel_filter(LPF_filtered, State),
-    io:format("HAMPEL MEASURE : ~p~n", [Hampel_Measure]),
     {Smoothed_measure, Smoothing_buffer} = smooth_measure(Hampel_Measure, State),
 
     case get_ground_distance(SensorName, Smoothed_measure) of
@@ -167,7 +167,7 @@ get_ground_distance(SensorName, D) ->
 
             {ok, Ground_measure};
         Msg ->
-            io:format("[SONAR_SENSOR] Cannot get sensor height : ~p~n",[Msg]),
+            io:format("[SONAR_MEASURE] Cannot get sensor height : ~p~n",[Msg]),
             {stop, cannot_get_height}
     end.
 
