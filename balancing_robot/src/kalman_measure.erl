@@ -2,314 +2,213 @@
 
 -behavior(hera_measure).
 
-
 -export([init/1, measure/1]).
 
+%%%% incertitude dynamique %%%%
+% plus la valeur est grande, moins tu fais confiance à ton modèle %
 
--define(VAR_Q, 0.001).
--define(VAR_R, 0.01).
+%Kalman orientation
+% Il faut absolument que je recheck ça
+-define(VAR_Q, 0.0002).   % variance sur θ essayé X10
+-define(VAR_R, 0.15).  % variance gyroscope (≈ std² 0.06208) essayer X10
+%%% incertitude dynamique (Q) %%%
+% plus c’est petit, plus tu fais confiance à ton modèle %
 
--define(VAR_S, 0.01). % (0.2/2)^2
--define(VAR_V, 0.05).
--define(VAR_P, 0.0025). % (0.1/2)^2
--define(VAR_AL, 0.1).
--define(VAR_AZ, 0.1).
+
+-define(VAR_P, 0.0002).   % variance sur X et Y
+
+%%% fiabilité capteur (R) %%%
+% plus c’est petit, plus tu fais confiance en la mesure %
+-define(VAR_S, 0.0075).  
 
 -define(RAD_TO_DEG, 180.0/math:pi()).
+-define(DEG_TO_RAD, math:pi()/180.0).
+
 
 init(_Args) ->
-    timer:sleep(2000),
+    timer:sleep(1000),
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
-    calibrate(),
+    calibrate2(),
+
     calibrate_speed(),
-    
     State = #{
-        t0 => hera:timestamp(),
-        x_pos => mat:zeros(9, 1),
-        p_pos => mat:eye(9),
+        t0 => erlang:system_time()/1.0e6,
+        x_pos => mat:matrix([[0],[0]]),
+        p_pos => mat:diag([1,1]),
         x_or => mat:matrix([[1],[0],[0],[0]]),
-        p_or => mat:diag([10,10,10,10]),
-        yaw => mat:eye(1),
+        p_or => mat:diag([1,1,1,1]),
         seq => 2,
         seqS1 => 2,
-        seqS2 => 2,
-        must_wait => false
+        seqS2 => 2
     },
 
     {ok, State, #{
         name => kalman_measure,
         iter => infinity,
-        timeout => 250
+        timeout => 100
     }}.
 
 measure(State) ->
     #{ 
-        t0   := T0,
+        t0 := T0,
         x_pos := Xpos,
         p_pos := Ppos,
         x_or := Xor,
         p_or := Por,
-        yaw := _Yaw,
         seq  := Seq,
         seqS1 := SeqS1,
-        seqS2 := Seqs2,
-        must_wait := Wait        
+        seqS2 := SeqS2
+        
     } = State,
 
-    io:format("start mesure ~n"),
     case hera_data:get(robot_pos, robot) of 
         [{_, _, _, [_OldX,_OldY, _OldAngle, OldRoom]}] ->
-            T1 = hera:timestamp(),
-            % Faire un process nav
-            Rorien = q2dcm(mat:to_array(Xor)),
-            {Acc,Acclin,Gyro,Mag,R0} = get_val_nav(Rorien),
-            Correction = 1,
-            if 
-                Wait ->
-                    io:format("[KALMAN MEASURE] Entered new room, waiting~n"),
-                    timer:sleep(200);
-                true ->
-                    ok
+            
+
+            
+            {V_mes_mm,_} = i2c_read(),
+            V_mes = V_mes_mm / 100,
+            
+
+            T1 = erlang:system_time()/1.0e6,
+
+
+            %%%%%% Kalman Orientation %%%%%%
+
+            {Xor1,Por1} = kalman_orientation(Xor, Por, T1, T0),
+            Offset = 12 * ?DEG_TO_RAD,
+            Theta_mes = - quat_to_yaw(normalize_quat(mat:to_array(Xor1))) - Offset,
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+            Q  = mat:diag([?VAR_P, ?VAR_P]),
+            
+            % Fonction de transition f(x)
+            Dt = (T1 - T0) / 1000.0,
+
+            F = fun(X) ->
+                [Yc, Zc] = mat:to_array(X),
+
+                Yp = Yc - V_mes *  math:cos(Theta_mes)* Dt,
+                %io:format("ThetaC : ~p et cos(thetaC) : ~p ~n ",[Thetac,math:cos(Thetac)]),
+                Zp = Zc - V_mes * math:sin(Theta_mes) * Dt,
+                mat:matrix([[Yp], [Zp]])
             end,
+            
+            % Jacobienne de f
+            Jf = fun(_X) ->
+                mat:matrix([
+                [1, 0],
+                [0, 1]
+                ])
+            end,
+
+            {Xpred,Ppred} = hera_kalman:extended_predict({Xpos, Ppos}, {F, Jf}, Q),
+            
             case get_new_robot_pos(OldRoom) of
                 {no_intersection, { _, _}} ->
-                    Dtpos = (T1 - T0)/1000,
-
-                    F = mat:matrix([
-                        [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
-                        [0,1,Dtpos,0,0,0,0,0,0], % V_X
-                        [0,0,1,0,0,0,0,0,0], % Acc_X
-                        [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
-                        [0,0,0,0,1,Dtpos,0,0,0], % V_Y
-                        [0,0,0,0,0,1,0,0,0], % Acc_Y
-                        [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
-                        [0,0,0,0,0,0,0,1,Dtpos], % V_Z
-                        [0,0,0,0,0,0,0,0,1] % Acc_Z
-                    ]),
-
-                    Q = mat:diag([?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction]),
-                    
-                    H = mat:matrix([
-                        [0,0,1,0,0,0,0,0,0], %Acc x
-                        [0,0,0,0,0,1,0,0,0],  %ACC y   
-                        [0,0,0,0,0,0,0,0,1]  % mesure Y
-
-                    ]),
-                
-                    {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
-
-                    [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
-
-                    Z = mat:matrix([[Axlin],[Aylin],[Azlin]]),
-                    R = mat:diag([?VAR_AZ,?VAR_AZ,?VAR_AZ]),
-
-
-                    {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
-
-                
-                    
-                    
-                    [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
-                    AccLin2 = [[Axxlin, Ayylin, Azzlin]],
-
-                    {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
-
-                    Xarray2 = mat:to_array(Xor1),
-                    
-                    % Pour visualiser il faut utiliser le yaw =>
-                    Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
-
-                    YawDegrees = Yaw1 * ?RAD_TO_DEG,
-
-                    
-                    Xarray1 = mat:to_array(Xnew),
-                    Xarray = Xarray1 ++ Xarray2,
-
-                    Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
-                    Next_wait = if 
-                        Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
-                        true -> false
-                    end,
-                    
-                    hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
-                    send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
-
+                    [Xf, Yf] = mat:to_array(Xpred),
+                    ThetaDegrees = Theta_mes * ?RAD_TO_DEG,
                     NewState = #{ 
                         t0   => T1,
-                        x_pos => Xnew,
-                        p_pos => Pnew,
+                        x_pos => Xpred,
+                        p_pos => Ppred,
                         x_or => Xor1,
                         p_or => Por1,
-                        yaw => Yaw1,
                         seq  => Seq +1,
                         seqS1 => SeqS1,
-                        seqS2 => Seqs2,
-                        must_wait => Next_wait
-                    },
+                        seqS2 => SeqS2
+                    };
+                
 
-                    {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState};
-                    
-                {{Xout, Yout},{Seqsensor1,Seqsensor2}} ->
-                    case {SeqS1 < Seqsensor1 andalso Seqs2 < Seqsensor2} of
+
+                {{X_mes, Y_mes},{Seqsensor1,Seqsensor2}} -> 
+                    case {SeqS1 < Seqsensor1 andalso SeqS2 < Seqsensor2} of
                         {true} ->
-                            Dtpos = (T1 - T0)/1000,
-
-                            % kalman position
-                            F = mat:matrix([
-                                [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
-                                [0,1,Dtpos,0,0,0,0,0,0], % V_X
-                                [0,0,1,0,0,0,0,0,0], % Acc_X
-                                [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
-                                [0,0,0,0,1,Dtpos,0,0,0], % V_Y
-                                [0,0,0,0,0,1,0,0,0], % Acc_Y
-                                [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
-                                [0,0,0,0,0,0,0,1,Dtpos], % V_Z
-                                [0,0,0,0,0,0,0,0,1] % Acc_Z
-                            ]),
-
-                            Q = mat:diag([?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL, ?VAR_P, ?VAR_P, ?VAR_AL]),
-                            H = mat:matrix([
-                                [0,0,0,1,0,0,0,0,0], % mesure Y
-                                [0,0,0,0,0,0,1,0,0],  % mesure Z
-                                [0,0,1,0,0,0,0,0,0], %Acc x
-                                [0,0,0,0,0,1,0,0,0],  %ACC y   
-                                [0,0,0,0,0,0,0,0,1]  % mesure Y
-
-                            ]),
-                        
-                            {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
-
-                            [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
-
-                            Z = mat:matrix([[Xout],[Yout],[Axlin],[Aylin],[Azlin]]),
-                            R = mat:diag([?VAR_S, ?VAR_S,?VAR_AZ,?VAR_AZ,?VAR_AZ]),
-
-
-                            {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
                             
-                            
-                            Xarray1 = mat:to_array(Xnew),
+                            Z = mat:matrix([[X_mes],[Y_mes]]),
+                            io:format("Valeur reçu sonar, ~p, ~p ~n", [X_mes,Y_mes]),
 
+                            R  = mat:diag([?VAR_S, ?VAR_S]),
 
-                            [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
-                            AccLin2 = [[Axxlin, Ayylin, Azzlin]],
+                          
+                            % Fonction de mesure h(x) = x
+                            H = fun(X) ->
+                                [Xc, Yc] = mat:to_array(X),
 
-
-                            {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
-
-                            Xarray2 = mat:to_array(Xor1),
-                            
-                            % Pour visualiser il faut utiliser le yaw =>
-                            Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
-
-                            YawDegrees = Yaw1 * ?RAD_TO_DEG,                            
-                            
-                            Xarray = Xarray1 ++ Xarray2,
-
-                            Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
-                            Next_wait = if 
-                                Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
-                                true -> false
+                                mat:matrix([[Xc],[Yc]])
                             end,
+                            Jh = fun(_X) ->
+                                mat:matrix([
+                                [1,0],
+                                [0,1]
+                                ])
+                            end,
+                            {Xnew, Pnew} = hera_kalman:extended_update({Xpred, Ppred}, {H, Jh}, R, Z),
+                            
+                            [Xf, Yf] = mat:to_array(Xnew),
+                            ThetaDegrees =  Theta_mes * ?RAD_TO_DEG,
 
-                            hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
-                            send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
                             NewState = #{ 
                                 t0   => T1,
                                 x_pos => Xnew,
                                 p_pos => Pnew,
                                 x_or => Xor1,
                                 p_or => Por1,
-                                yaw => Yaw1,
                                 seq  => Seq +1,
-                                seqS1 => Seqsensor1,
-                                seqS2 => Seqsensor2,
-                                must_wait => Next_wait
-                            },
+                                seqS1 =>Seqsensor1,
+                                seqS2 =>Seqsensor2
 
-                            {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState};
+                            };
                         {false} ->
-                            Dtpos = (T1 - T0)/1000,
+                            
+                            [Xf, Yf] = mat:to_array(Xpred),
+                            ThetaDegrees = Theta_mes * ?RAD_TO_DEG,
+                            %io:format("False : ~p ~n", [ThetaDegrees]),
 
-                        F = mat:matrix([
-                            [1,Dtpos,(Dtpos*Dtpos)/2,0,0,0,0,0,0], % X 
-                            [0,1,Dtpos,0,0,0,0,0,0], % V_X
-                            [0,0,1,0,0,0,0,0,0], % Acc_X
-                            [0,0,0,1,Dtpos,(Dtpos*Dtpos)/2,0,0,0], % Y
-                            [0,0,0,0,1,Dtpos,0,0,0], % V_Y
-                            [0,0,0,0,0,1,0,0,0], % Acc_Y
-                            [0,0,0,0,0,0,1,Dtpos,(Dtpos*Dtpos)/2], % Z
-                            [0,0,0,0,0,0,0,1,Dtpos], % V_Z
-                            [0,0,0,0,0,0,0,0,1] % Acc_Z
-                        ]),
+                            NewState = #{ 
+                                t0   => T1,
+                                x_pos => Xpred,
+                                p_pos => Ppred,
+                                x_or => Xor1,
+                                p_or => Por1,
+                                seq  => Seq +1,
+                                seqS1 =>SeqS1,
+                                seqS2 =>SeqS2
 
-                        Q = mat:diag([?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction, ?VAR_P*Correction, ?VAR_P*Correction, ?VAR_AL*Correction]),
-                        
-                        H = mat:matrix([
-                            [0,0,1,0,0,0,0,0,0], %Acc x
-                            [0,0,0,0,0,1,0,0,0],  %ACC y   
-                            [0,0,0,0,0,0,0,0,1]  % mesure Y
+                            }
+                    end
+     
+            end,
+            
+            io:format("pos : ~p, ~p : ~p, v : ~p ~n", [Xf,Yf,T1,V_mes]),
+            io:format("angle :~p , ~p~n ", [ThetaDegrees,T1]),
 
-                        ]),
-                    
-                        {Xpred, Ppred} = hera_kalman:predict({Xpos, Ppos}, F, Q),
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %%%%%%%%%%%   Store and send new data  %%%%%%%%%%% 
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            Room = determine_robot_room(Xf, Yf, OldRoom),
+            
+        if
+            Room =/= OldRoom ->
+                io:format(  " ~n JAI CHANNNGGGEEE DE ROOOMMMMM  ~n");
+            true ->
+                io:format("pas change de room")
+        end,
 
-                        [Axlin,Aylin,Azlin] = mat:to_array(Acclin),
-
-                        Z = mat:matrix([[Axlin],[Aylin],[Azlin]]),
-                        R = mat:diag([?VAR_AZ,?VAR_AZ,?VAR_AZ]),
-
-
-                        {Xnew, Pnew} = hera_kalman:update({Xpred, Ppred}, H, R, Z),
-
-                    
-                                  
-                        [_, _, Axxlin, _, _, Ayylin,_,_,Azzlin] = mat:to_array(Xnew),
-                        AccLin2 = [[Axxlin, Ayylin, Azzlin]],
-
-                        {Xor1,Por1} = kalman_orientation(Acc,AccLin2,Gyro,Mag,R0,Rorien,T1,T0,Xor,Por),
-
-                        Xarray2 = mat:to_array(Xor1),
-                        
-                        % Pour visualiser il faut utiliser le yaw =>
-                        Yaw1 = quat_to_yaw(normalize_quat(mat:to_array(Xor1))), 
-
-                        YawDegrees = Yaw1 * ?RAD_TO_DEG,
-
-                        Xarray1 = mat:to_array(Xnew),
-                        Xarray = Xarray1 ++ Xarray2,
-
-                        Room = determine_robot_room(lists:nth(4, Xarray), lists:nth(7, Xarray), OldRoom),
-                        Next_wait = if 
-                            Room =/= OldRoom -> io:format("[KALMAN_MEASURE] Waiting at next it~n"),true;
-                            true -> false
-                        end,
-
-                        hera_data:store(robot_pos, robot, Seq, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
-                        
-                        send_robot_pos([lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room]),
-                        NewState = #{ 
-                            t0   => T1,
-                            x_pos => Xnew,
-                            p_pos => Pnew,
-                            x_or => Xor1,
-                            p_or => Por1,
-                            yaw => Yaw1,
-                            seq  => Seq +1,
-                            seqS1 => SeqS1,
-                            seqS2 => Seqs2,
-                            must_wait => Next_wait
-                        },
-
-                        {ok, [lists:nth(4, Xarray), lists:nth(7, Xarray), YawDegrees, Room], robot_pos, robot, NewState}
-                end 
-            end
-    end.               
+            hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
+            send_robot_pos([Xf, Yf,  ThetaDegrees, Room]),
+            {ok, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState};
+        [] ->
+            {undefined, State}
+    
+    end.              
 %============================================================================================================================================
-%======================================================= CALIBRATION FUNC ========================================================================
+%======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
 
-calibrate() ->
+calibrate2() ->
     N=500,
     Gyro_data = [ pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])
                 || _ <- lists:seq(1, N) ],
@@ -349,7 +248,8 @@ calibrate_speed() ->
     SpeedsR = [R || [_, R] <- Decoded],
     OffsetL = lists:sum(SpeedsL) / N,
     OffsetR = lists:sum(SpeedsR) / N,
-    persistent_term:put(i2c_offset, {OffsetL, OffsetR}).   
+    persistent_term:put(i2c_offset, {OffsetL, OffsetR}).
+
 
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
@@ -362,10 +262,12 @@ send_robot_pos(Pos) ->
             
 get_new_robot_pos(Room) ->
     [Sensor1, Sensor2] = get_room_sensors(Room),
+
+    io:format("[KALMAN_MEASURE] The two sensors in the current room are : ~p and ~p ~n",[Sensor1, Sensor2]),
     {X1, Y1, _} = get_sensor_pos(Sensor1),
     {X2, Y2, _} = get_sensor_pos(Sensor2),
-    [{_, Seqsensor1, _, [Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
-    [{_, Seqsensor2, _, [Dist2]}] = hera_data:get(distance, Sensor2),
+    [{_, Seqsensor1,_,[Dist1]}] = hera_data:get(distance, Sensor1), % distance on the ground
+    [{_, Seqsensor2,_,[Dist2]}] = hera_data:get(distance, Sensor2),
     {TLx, TLy, BRx, BRy} = get_room_info(Room),
     {get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}),{Seqsensor1,Seqsensor2}}.
 
@@ -445,6 +347,7 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
+
 determine_robot_room(X, Y, OldRoom) ->
     determine_robot_room(X, Y, OldRoom, 0).
 determine_robot_room(X, Y, OldRoom, RoomNum) ->
@@ -452,6 +355,7 @@ determine_robot_room(X, Y, OldRoom, RoomNum) ->
         [{_, _, _, [TLx, TLy, BRx, BRy]}] ->
             if 
                 (X > TLx andalso X < BRx) andalso (Y > TLy andalso Y < BRy) ->
+                    
                     RoomNum;
                 true ->
                     determine_robot_room(X, Y, OldRoom, RoomNum+1)
@@ -460,6 +364,94 @@ determine_robot_room(X, Y, OldRoom, RoomNum) ->
             io:format("[KALMAN_MEASURE] Error: Not in a known room~n"),
             OldRoom
     end.
+
+
+
+scale(List, Factor) ->
+    [X*Factor || X <- List].
+
+get_val_nav_2(R) ->
+
+    [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
+    [Gx, Gy, Gz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]),
+    [Mx, My, Mz] = pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]),
+    {Ax0, Ay0, Az0} = persistent_term:get(acc_init),
+    %Acc = scale([Ax - Ax0, Ay - Ay0, Az - Az0], 9.81),
+    Acc = scale([ (Az - Az0), (Ay - Ay0), -(Ax - Ax0)], 9.81),
+
+    
+    {GBx, GBy, GBz} = persistent_term:get(gyro_init),
+    %Gyro = scale([Gx-GBx,Gy-GBy,Gz-GBz],math:pi()/180),
+    Gyro = scale([(Gz-GBz),(Gy-GBy),-(Gx-GBx)],math:pi()/180),
+ 
+    {MBx,MBy,MBz} = persistent_term:get(mag_init),
+    %Mag = mat:matrix([[Mx-MBx,My-MBy,Mz-MBz]]),
+    Mag = mat:matrix([[(Mz-MBz),(My-MBy),-(Mx-MBx)]]),
+
+
+    AccRot = mat:'*'(mat:matrix([Acc]), mat:tr(R)),  % rotation dans le repère monde
+    RotAcc = mat:'-'(AccRot, mat:matrix([[9.81, 0, 0]])),  % compensation gravité
+
+    %R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
+    R0 = ahrs([Az,Ay,-Ax], [(Mz-MBz),(My-MBy),-(Mx-MBx)]),
+    mat:tr(R0),
+    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
+i2c_read() ->
+    %Receive I2C and conversion
+    I2Cbus = persistent_term:get(i2c),
+    [<<SL1,SL2,SR1,SR2,CtrlByte>>] = grisp_i2c:transfer(I2Cbus, [{read, 16#40, 1, 5}]),
+    {OffsetL,OffsetR} = persistent_term:get(i2c_offset),
+    [Speed_L,Speed_R] = hera_com:decode_half_float([<<SL1, SL2>>, <<SR1, SR2>>]),
+    Speed2 = ((Speed_L - OffsetL) + (Speed_R - OffsetR))/2,
+    Speed = case erlang:abs(Speed2)/100 < 0.08 of
+        true -> 0.0;
+        false -> Speed2
+    end,
+    if
+    (Speed_L < 0 andalso Speed_R > 0) orelse (Speed_L > 0 andalso Speed_R < 0) ->
+        io:format("Signes opposés~n"),
+
+        {0.0, CtrlByte};
+    true ->
+        io:format("Autre cas~n"),
+        {Speed, CtrlByte}
+
+    end.
+
+quat_to_yaw([[Q0], [Q1], [Q2], [Q3]]) ->
+    math:atan2(2*(Q0*Q3 + Q1*Q2), 1 - 2*(Q2*Q2 + Q3*Q3)).
+normalize_quat([Q0, Q1, Q2, Q3]) ->
+    Norm = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
+    [[Q0 / Norm], [Q1 / Norm], [Q2 / Norm], [Q3 / Norm]].
+
+
+kalman_orientation(Xor,Por,T1,T0) ->
+    Dtor = (T1-T0)/1000.0,
+    Rorien = q2dcm(mat:to_array(Xor)),
+    {Acc, _Acclin, Gyro, Mag, R0} = get_val_nav_2(Rorien),
+    [Acx,Acy,Acz] = mat:to_array(Acc),
+    [Mx,My,Mz] = mat:to_array(Mag),
+    R1 = ahrs([Acx,Acy,Acz], [Mx,My,Mz]),
+    Quat = dcm2quat(mat:'*'(R1,R0)),
+    [Wxx,Wyy,Wzz] = mat:to_array(Gyro),
+    [Wx,Wy,Wz] = [Wxx,Wyy,Wzz],
+    Omega = mat:matrix([
+        [0,Wx,Wy,Wz],
+        [-Wx,0,-Wz,Wy],
+        [-Wy,Wz,0,-Wx],
+        [-Wz,-Wy,Wx,0]
+    ]),
+
+    For = mat:'+'(mat:eye(4), mat:'*'(0.5 * Dtor, Omega)),
+    Qor = mat:diag([?VAR_Q,?VAR_Q,?VAR_Q,?VAR_Q]),
+    Hor = mat:eye(4),
+    Zor = mat:tr(Quat),
+    Ror = mat:diag([?VAR_R,?VAR_R,?VAR_R,?VAR_R]),
+
+    {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
+    {Xor1, Por1} = hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor),
+    {Xor1,Por1}.
+
 
 q2dcm([Q0, Q1, Q2, Q3]) -> 
     R00 = 2 * (Q0 * Q0 + Q1 * Q1) - 1,
@@ -480,19 +472,6 @@ q2dcm([Q0, Q1, Q2, Q3]) ->
     [R20, R21, R22]
     ]).
 
-unit(Vec) ->
-    Norm = math:sqrt(lists:sum([X*X || X <- Vec])),
-    case Norm of
-        0 -> Vec;
-        _ -> [X / Norm || X <- Vec]
-    end.
-
-ahrs(Acc, Mag) ->
-    Down = unit([-A || A <- Acc]),
-    East = unit(cross_product(Down, unit(Mag))),
-    North = unit(cross_product(East, Down)),
-    mat:tr(mat:matrix([North, East, Down])).
-
 dcm2quat(R) ->
     [R11,R12,R13,R21,R22,R23,R31,R32,R33] = mat:to_array(R),
     Q12 = 0.25*(1+R11+R22+R33),
@@ -505,83 +484,18 @@ dcm2quat(R) ->
     ],
     mat:matrix([scale(V, (0.25/Q1))]).
 
-scale(List, Factor) ->
-    [X*Factor || X <- List].
-
-
-get_val_nav(R) ->
-
-    [Ax, Ay, Az] = pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]),
-    [Gx, Gy, Gz] = pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g]),
-    [Mx, My, Mz] = pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]),
-    {Ax0, Ay0, Az0} = persistent_term:get(acc_init),
-    Acc = scale([Ax - Ax0, Ay - Ay0, Az - Az0], 9.81),
+ahrs(Acc, Mag) ->
+    Down = unit([-A || A <- Acc]),
+    East = unit(cross_product(Down, unit(Mag))),
+    North = unit(cross_product(East, Down)),
+    mat:tr(mat:matrix([North, East, Down])).
     
-    
-    {GBx, GBy, GBz} = persistent_term:get(gyro_init),
-    Gyro = scale([Gx-GBx,Gy-GBy,Gz-GBz],math:pi()/180),
-
-    {MBx,MBy,MBz} = persistent_term:get(mag_init),
-    Mag = mat:matrix([[Mx-MBx,My-MBy,Mz-MBz]]),
-
-
-
-    AccRot = mat:'*'(mat:matrix([Acc]), mat:tr(R)),  % rotation dans le repère monde
-    RotAcc = mat:'-'(AccRot, mat:matrix([[9.81, 0, 0]])),  % compensation gravité
-
-    R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
-    mat:tr(R0),
-    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
-
-
-quat_to_yaw([[Q0], [Q1], [Q2], [Q3]]) ->
-    math:atan2(2*(Q0*Q1 + Q3*Q2), 1 - 2*(Q2*Q2 + Q3*Q3)).
-
-normalize_quat([Q0, Q1, Q2, Q3]) ->
-    Norm = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
-    [[Q0 / Norm], [Q1 / Norm], [Q2 / Norm], [Q3 / Norm]].
-
-qdot([Q11, Q12, Q13, Q14], [Q21, Q22, Q23, Q24]) ->
-    Q11*Q21 + Q12*Q22 + Q13*Q23 + Q14*Q24.
+unit(Vec) ->
+    Norm = math:sqrt(lists:sum([X*X || X <- Vec])),
+    case Norm of
+        0 -> Vec;
+        _ -> [X / Norm || X <- Vec]
+    end.
 
 cross_product([U1,U2,U3], [V1,V2,V3]) -> 
     [U2*V3-U3*V2, U3*V1-U1*V3, U1*V2-U2*V1].
-
-
-kalman_orientation(Acc,Acclin2,Gyro,Mag,R0,Rori,T1,T0,Xor,Por) ->
-    Acclin3 = mat:matrix(Acclin2),
-    AccRot2 = mat:'*'(Acclin3, Rori),
-    [Acc1,Acc2,Acc3] = mat:to_array(Acc), 
-    [AccRotx,AccRoty,AccRotz] = mat:to_array(AccRot2), 
-    R1 = ahrs([Acc1-AccRotx,Acc2-AccRoty,Acc3-AccRotz], mat:to_array(Mag)),
-
-    Quat = dcm2quat(mat:'*'(R1, R0)),
-    Dtor = (T1-T0)/1000, 
-    [Wx,Wy,Wz] = mat:to_array(Gyro),
-
-    Omega = mat:matrix([
-        [0,Wx,Wy,Wz],
-        [-Wx,0,-Wz,Wy],
-        [-Wy,Wz,0,-Wx],
-        [-Wz,-Wy,Wx,0]
-    ]),
-
-    For = mat:'+'(mat:eye(4), mat:'*'(0.5 * Dtor, Omega)),
-    Qor = mat:diag([?VAR_Q,?VAR_Q,?VAR_Q,?VAR_Q]),
-    Hor = mat:eye(4),
-    Zor = mat:tr(Quat),
-    Ror = mat:diag([?VAR_R,?VAR_R,?VAR_R,?VAR_R]),
-
-    {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
-    {Xor1, Por1} = case qdot(mat:to_array(Zor), mat:to_array(Xor0)) > 0 of
-        true ->
-            hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor);
-        false ->
-            hera_kalman:update({mat:'*'(-1,Xor0), Por0}, Hor, Ror, Zor)
-    end,
-    {Xor1,Por1}.
-
-
-
-
-
