@@ -7,13 +7,12 @@ from Server import Server
 from components.Room import Room
 from components.Robot import Robot
 from pathlib import Path
-from  helping_package import SaveParser
 import time
 
 class User_interface:
 
     # App General State
-    RESIZE = 2 # Resizing factor for the rooms
+    RESIZE = 2.5 # Resizing factor for the rooms
     running = True # True until quit command received
     image_dict = {} # Contains all the images object
     rect_dict = {} # Contains all the images rect
@@ -187,28 +186,9 @@ class User_interface:
             self.is_trajectory_started = True
             self.timer = pygame.time.get_ticks()/1000
 
-        elif self.is_click_image("save", event):
-            self.in_popup = True
-            self.create_save_popup()
-
-        elif self.is_click_image("load", event):
-            self.in_popup = True
-            self.create_load_popup()
-
         elif self.is_click_image("place_robot", event):
             self.in_popup = True
             self.create_robot_popup()
-
-        elif self.is_click_image("zoom_in", event):
-            if(self.RESIZE != 1):            
-                for room in self.rooms:
-                    room.update_size(self.RESIZE, self.RESIZE-1, self.HEIGHT)
-                self.RESIZE -= 1
-
-        elif self.is_click_image("zoom_out", event):  
-            for room in self.rooms:
-                room.update_size(self.RESIZE, self.RESIZE+1, self.HEIGHT)
-            self.RESIZE += 1
 
     def event_interact_popup(self, event):
         if event.ui_element == self.UI_elements.get("Room_Submit"):
@@ -257,7 +237,7 @@ class User_interface:
             Robot_angle = self.UI_elements.get("Robot_angle").get_text() 
                 
             try :
-                self.server.update_robot((float(Robot_x),float(Robot_y)), int(Robot_angle), self.rooms[0]) #TODO: GET ROBOT ROOM FROM X AND Y
+                self.server.update_robot((float(Robot_x),float(Robot_y)), int(Robot_angle))
                 self.robot = self.server.robot
                 self.robot.confirmed = True
             except:        
@@ -443,14 +423,8 @@ class User_interface:
             self.draw_image("start_pressed", self.WIDTH-200, 100)
         else :
             self.draw_image("start", self.WIDTH-200, 100)
-        self.draw_image("save", self.WIDTH-375, 100)
-        self.draw_image("load", self.WIDTH-550, 100)
         if len(self.rooms) > 0:
-            self.draw_image("place_robot", self.WIDTH-775, 100)
-
-        # Draw zoom
-        self.draw_image("zoom_in", self.WIDTH - 200, self.HEIGHT - 100)
-        self.draw_image("zoom_out", self.WIDTH - 375, self.HEIGHT - 100)
+            self.draw_image("place_robot", self.WIDTH-450, 100)
 
     def draw_robot(self):
         if self.robot != None and self.robot.confirmed:
@@ -695,112 +669,6 @@ class User_interface:
         self.manager.draw_ui(self.screen)
         pygame.display.update()
 
-    def create_save_popup(self):
-        # Calculate sizes for buttons and popup dimensions
-        button_width = self.WIDTH // 2 - self.WIDTH // 20
-        button_height = min(self.HEIGHT // 20, 60)
-        popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 3
-        margin_left = (self.WIDTH - button_width)//20
-        margin = 20
-
-        # Center the popup on the screen
-        popup_rect = pygame.Rect(
-            (self.WIDTH - popup_width) // 2,
-            (self.HEIGHT - popup_height) // 2,
-            popup_width,
-            popup_height
-        )
-
-        popup_window = pygame_gui.elements.UIWindow(
-            rect=popup_rect,
-            manager=self.manager,
-            window_display_title='Save Config'
-        )
-
-        self.active_popup = popup_window
-
-        current_y = margin
-
-        header_label = pygame_gui.elements.UILabel(
-            
-            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            text="Save as :",
-            manager=self.manager,
-            container=popup_window
-        )
-        current_y += button_height + margin
-
-        self.UI_elements["Filename"] = pygame_gui.elements.UITextEntryLine(
-            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            manager=self.manager,
-            container=popup_window
-        )
-        current_y += button_height + margin
-
-        self.UI_elements["Save_Submit"] = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            text="Submit",
-            manager=self.manager,
-            container=popup_window
-        )
-
-        self.manager.draw_ui(self.screen)
-        pygame.display.update()
-
-    def create_load_popup(self):
-        # Calculate sizes for buttons and popup dimensions
-        button_width = self.WIDTH // 2 - self.WIDTH // 20
-        button_height = min(self.HEIGHT // 20, 60)
-        popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 3
-        margin_left = (self.WIDTH - button_width)//20
-        margin = 20
-
-        # Retrieve sensors Ids
-        self.saved_files = self.get_saved_files()
-
-        # Center the popup on the screen
-        popup_rect = pygame.Rect(
-            (self.WIDTH - popup_width) // 2,
-            (self.HEIGHT - popup_height) // 2,
-            popup_width,
-            popup_height
-        )
-
-        popup_window = pygame_gui.elements.UIWindow(
-            rect=popup_rect,
-            manager=self.manager,
-            window_display_title='Saved Configs'
-        )
-
-        self.active_popup = popup_window
-
-        current_y = margin
-
-        header_label = pygame_gui.elements.UILabel(
-            
-            relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-            text="Select a file to load:",
-            manager=self.manager,
-            container=popup_window
-        )
-        current_y += button_height + margin
-
-
-        for name in self.saved_files :
-            self.UI_elements["SavedFile" + name[:-4]] = pygame_gui.elements.UIButton(
-                relative_rect=pygame.Rect(margin_left, current_y, button_width, button_height),
-                text=name[:-4],
-                manager=self.manager,
-                container=popup_window
-            )
-
-            current_y += button_height + margin
-
-        self.manager.draw_ui(self.screen)
-        pygame.display.update()
-
     def create_robot_popup(self):
         # Calculate sizes for buttons and popup dimensions
         button_width = self.WIDTH // 2 - self.WIDTH // 20
@@ -938,13 +806,13 @@ class User_interface:
         else :
             match side :
                 case "L":
-                    return (x - adapted_width//2)+10, y
+                    return (x - adapted_width//2), y
                 case "R":
-                    return (x + adapted_width//2)-10, y
+                    return (x + adapted_width//2), y
                 case "T": 
-                    return x, (y + adapted_height//2)-10
+                    return x, (y + adapted_height//2)
                 case "B":
-                    return x, (y - adapted_height//2)+10 
+                    return x, (y - adapted_height//2)
     
     def compute_screen_size(self, width, height):
         return int(width * (self.HEIGHT//self.RESIZE)), int(height * (self.HEIGHT//self.RESIZE))
@@ -1036,23 +904,6 @@ class User_interface:
                         self.action_start_time = pygame.time.get_ticks() / 1000.0
                         self.trajectory_idx += 1
 
-    def create_save_file(self, filename):
-        with open('./saves/' + filename+'.txt', "w") as file:
-            file.write("RESIZE_FACTOR : " + str(self.RESIZE) +"\n")
-            file.write("HEIGHT : " + str(self.HEIGHT) +"\n")
-            for room in self.rooms:
-                line = str(room.width) + ", " + str(room.height) + ", " + str(room.pos) + ", " + str(room.room_num)+"\n"
-                for side in room.sides:
-                    pass
-                    """ side_obj = room.sides.get(side)
-                    line += ", " + str(side_obj.pos) + ";" +  str(side_obj.img) + ";" + str(side_obj.type) """
-                file.write(line)
-
-    def get_saved_files(self):
-        directory = Path("./saves")
-        files = [f.name for f in directory.iterdir() if f.is_file()]
-        return files
-        
 #==========================================================================================================================================
 #===================================================== MAIN LOOP ==========================================================================
 #==========================================================================================================================================

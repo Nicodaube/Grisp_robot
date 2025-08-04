@@ -58,7 +58,3 @@ class Room:
         for side in ["L", "R", "T", "B"]:
             x, y = self.compute_pos(side)
             self.sides[side].pos = (x,y)
-
-
-    
-
