@@ -6,7 +6,7 @@
 -define(LPF_ALPHA, 0.2).
 -define(SMOOTHING_WINDOW, 3).
 -define(HAMPEL_WINDOW, 7).
--define(N_SIG, 3.0).
+-define(N_SIG, 2.0).
 
 -export([init/1, measure/1]).
 

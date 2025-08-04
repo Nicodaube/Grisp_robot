@@ -12,7 +12,7 @@ import time
 class User_interface:
 
     # App General State
-    RESIZE = 2.5 # Resizing factor for the rooms
+    RESIZE = 3.5 # Resizing factor for the rooms
     running = True # True until quit command received
     image_dict = {} # Contains all the images object
     rect_dict = {} # Contains all the images rect
@@ -89,7 +89,7 @@ class User_interface:
         stop_img = pygame.transform.scale(stop_img, (stop_img.get_width() // 10, stop_img.get_height() // 10))
 
         robot = pygame.image.load('./img/Robot.png')
-        robot = pygame.transform.scale(robot, (robot.get_width()//4, robot.get_height()//4))
+        robot = pygame.transform.scale(robot, (robot.get_width()//6, robot.get_height()//6))
 
         plus_img = pygame.image.load('./img/plus.png')
         plus_img = pygame.transform.scale(plus_img, (plus_img.get_width() // 5, plus_img.get_height() // 5))
@@ -569,7 +569,7 @@ class User_interface:
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
         popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 3
+        popup_height = self.HEIGHT // 2
         margin_left = (self.WIDTH - button_width)//20
         margin = 20
 
@@ -674,7 +674,7 @@ class User_interface:
         button_width = self.WIDTH // 2 - self.WIDTH // 20
         button_height = min(self.HEIGHT // 20, 60)
         popup_width = self.WIDTH // 2
-        popup_height = self.HEIGHT // 2
+        popup_height = self.HEIGHT
         margin_left = (self.WIDTH - button_width)//20
         margin = 20
 
@@ -942,7 +942,10 @@ class User_interface:
             self.manager.draw_ui(self.screen)
             pygame.display.flip()
 
-            self.serial_comm()
+            try:
+                self.serial_comm()
+            except:
+                print("[CONTROLLER] Error with LoRa Communication")
 
         # Quit
         pygame.quit()

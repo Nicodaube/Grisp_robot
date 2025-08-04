@@ -195,6 +195,8 @@ class Server:
 
         if sensor_config_ok:
             room_config_ok = self.send_rooms_infos()
+        else:
+            room_config_ok = False
 
         if room_config_ok:
             self.send_robot_info()
@@ -214,22 +216,35 @@ class Server:
         # @param sensor: the actual sensor from which we draw the info (Sensor)
         # @return a ack boolean if the informations of this sensor where successfully delivered to everyone, false otherwise
 
-        # Init ack status 
+        # Init ack status
         self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.ack_devices["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.ack_pos["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
+        self.set_unknown_devices(sensor)
 
         if sensor.x != -1 :
             ack = False
             LIMIT = 0
             while (not ack) and (LIMIT < 10): 
-                message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)                
-                self.send(message, "brd")
-                time.sleep(0.5)
+                message = "Add_Device : sensor_" + str(sensor.id) + " , " + sensor.ip + " , " + str(sensor.port)  
+                for i in range(len(self.ack_devices["sensor_"+str(sensor.id)])-1):
+                    osensor = self.ack_devices["sensor_"+str(sensor.id)][i]
+                    if not osensor :
+                        self.send(message, "uni", i+1)    
+
+                if not self.ack_devices["sensor_"+str(sensor.id)][len(self.sensors.keys())]:
+                    self.send(message, "uni", "robot")
+                time.sleep(0.25)
                 message = "Pos " + str(sensor.id) + " : " + str(sensor.x) + " , " + str(sensor.y) + " , " + str(sensor.height) + " , " + str(sensor.angle) + " , " + str(sensor.room)
-                self.send(message, "brd")
-                time.sleep(0.5)
+                for i in range(len(self.ack_pos["sensor_"+str(sensor.id)])-1):
+                    osensor = self.ack_pos["sensor_"+str(sensor.id)][i]
+                    if not osensor :
+                        self.send(message, "uni", i+1)   
+
+                if not self.ack_pos["sensor_"+str(sensor.id)][len(self.sensors.keys())]:
+                    self.send(message, "uni", "robot")
+                time.sleep(0.25)
 
                 ack = self.check_ack("sensor_" + str(sensor.id), "sensor")
                 LIMIT += 1
@@ -290,6 +305,12 @@ class Server:
                     return False
             return True
 
+    def set_unknown_devices(self, sensor):
+        for i in range(len(self.sensors.keys())):
+            sensor2 = self.sensors[i+1]
+            if (sensor2.room != sensor.room-1) and (sensor2.room!=sensor.room+1) and (sensor2.room!=sensor.room):
+                self.ack_devices["sensor_"+str(sensor.id)][i] = True
+                self.ack_pos["sensor_"+str(sensor.id)][i] = True
 #==========================================================================================================================================
 #============================================================= API FUNCTIONS ==============================================================
 #==========================================================================================================================================
