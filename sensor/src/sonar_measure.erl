@@ -53,7 +53,7 @@ measure(State) ->
                 n_sig := ?N_SIG
             },
             {ok, [Measure], distance, SensorName, NewState}
-    after 5000 ->
+    after 1000 ->
         [grisp_led:color(L, blue) || L <- [1, 2]],
         {undefined, State}
     end.
@@ -117,7 +117,7 @@ wait_ack(Osensor) ->
 get_init_seq() ->
     SensorName = persistent_term:get(sensor_name),
     case hera_data:get(distance, SensorName) of
-        [{_, _, Seq, [_]}] -> Seq +1;
+        [{_, Seq, _, [_]}] -> Seq +1;
         _ -> 1
     end.
 

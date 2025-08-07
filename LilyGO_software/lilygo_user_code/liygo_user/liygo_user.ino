@@ -17,8 +17,6 @@
 #define CONFIG_RST  23
 #define CONFIG_DIO0 26
 
-
-
 unsigned long t ;
 int state = 0;
 int prevstate = 0;
