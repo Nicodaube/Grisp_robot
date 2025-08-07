@@ -102,8 +102,8 @@ class Server:
 
         data_split = data.strip().split(",")
         if addr[0] == self.robot.ip:
-            self.csv_saver.save_robot_pos_kalman(float(data_split[1]), float(data_split[2]), float(data_split[3]), int(data_split[4]))
-            self.robot.update_pos(float(data_split[1]), float(data_split[2]), float(data_split[3]), int(data_split[4]))
+            self.csv_saver.save_robot_pos_kalman(float(data_split[2]), float(data_split[3]), float(data_split[4]), int(data_split[5]))
+            self.robot.update_pos(float(data_split[2]), float(data_split[3]), float(data_split[4]), int(data_split[5]))
 
     def handle_ack(self, data):
         # Processes the ack message, updates the ack list
@@ -113,12 +113,13 @@ class Server:
         config_message = data_split[1]
         id = data_split[2]
         origin = data_split[3]
-        
         if origin != "robot":                                                
             if config_message == "Pos":
                 self.ack_pos.get(id)[int(origin)-1] = True   
             elif config_message == "Room_info":
                 self.ack_rooms.get(int(id))[int(origin)-1] = True
+            elif config_message == "Add_Link":
+                self.ack_propag.get("sensor_"+origin)[int(id.split("_")[1])-1] = True
             else :
                 self.ack_devices.get(id)[int(origin)-1] = True
         else :
@@ -187,6 +188,7 @@ class Server:
     def worker_send_config(self): # Sends the whole config to all the devices to setup the system
         self.started = True
         self.ack_devices = {}
+        self.ack_propag = {}
         self.ack_pos = {}
         self.ack_rooms = {}
 
@@ -219,6 +221,7 @@ class Server:
         # Init ack status
         self.ack_devices["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.ack_devices["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
+        self.ack_propag["sensor_"+str(sensor.id)] = [True for i in range(len(self.sensors.keys())+1)]
         self.ack_pos["sensor_" + str(sensor.id)] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.ack_pos["robot"] = [False for i in range(len(self.sensors.keys()) + 1)]
         self.set_unknown_devices(sensor)
@@ -246,10 +249,20 @@ class Server:
                     self.send(message, "uni", "robot")
                 time.sleep(0.25)
 
+
+                #Propag config
+                for i in range(len(self.ack_propag["sensor_" + str(sensor.id)])-1):
+                    is_acked = self.ack_propag["sensor_"+str(sensor.id)][i]
+                    osensor = self.sensors[i+1]
+                    if not is_acked : 
+                        message = "Add_Link : sensor_" + str(osensor.id)+","+ osensor.ip + "," + str(osensor.port)
+                        self.send(message, "uni", sensor.id)
+
+                time.sleep(0.25)
                 ack = self.check_ack("sensor_" + str(sensor.id), "sensor")
                 LIMIT += 1
         
-        return ack
+            return ack
 
     def send_robot_info(self): # Sends all the informations about the robot to all the devices
         if self.robot.ip != "0":
@@ -298,6 +311,8 @@ class Server:
                     return False
                 if not self.ack_pos.get(id)[i]:
                     return False
+                if id != "robot" and not self.ack_propag.get(id)[i]:
+                    return False
             return True
         elif type == "room":
             for i in range(len(self.sensors.keys())+1):
@@ -308,9 +323,16 @@ class Server:
     def set_unknown_devices(self, sensor):
         for i in range(len(self.sensors.keys())):
             sensor2 = self.sensors[i+1]
-            if (sensor2.room != sensor.room-1) and (sensor2.room!=sensor.room+1) and (sensor2.room!=sensor.room):
+            if (sensor2.room!=sensor.room):
                 self.ack_devices["sensor_"+str(sensor.id)][i] = True
                 self.ack_pos["sensor_"+str(sensor.id)][i] = True
+
+            if (sensor2.room == sensor.room-1) or (sensor2.room == sensor.room+1):
+                self.ack_propag["sensor_"+str(sensor.id)][i] = False
+
+        print(f"for sensor_{sensor.id} propag: {self.ack_propag["sensor_"+str(sensor.id)]}")
+        print(f"for sensor_{sensor.id} devices: {self.ack_devices["sensor_"+str(sensor.id)]}")
+        print(f"for sensor_{sensor.id} pos: {self.ack_pos["sensor_"+str(sensor.id)]}")
 #==========================================================================================================================================
 #============================================================= API FUNCTIONS ==============================================================
 #==========================================================================================================================================

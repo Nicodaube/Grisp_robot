@@ -198,8 +198,8 @@ measure(State) ->
         end,
 
             hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
-            send_robot_pos([Xf, Yf,  ThetaDegrees, Room]),
-            {ok, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState};
+            send_robot_pos(Seq, [Xf, Yf,  ThetaDegrees, Room]),
+            {no_share, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState}; % If no propag graph, delete prev line and replace no_share by ok
         [] ->
             {undefined, State}
     
@@ -255,11 +255,11 @@ calibrate_speed() ->
 %======================================================= HELPER FUNC ========================================================================
 %============================================================================================================================================       
 
-send_robot_pos(Pos) ->
-    Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
-    Msg = "Robot_pos," ++ Pos_string,
-    hera_com:send_unicast(server, Msg, "UTF8").
-            
+send_robot_pos(Seq, [Xf,Yf, ThetaDegrees, Room]) ->
+    Msg = "Robot_pos," ++ integer_to_list(Seq) ++","++ float_to_list(Xf) ++ "," ++ float_to_list(Yf) ++ "," ++ float_to_list(ThetaDegrees) ++ "," ++ integer_to_list(Room),
+    Adjacent_sensors = get_adjacent_sensors(Room), % To impose the propagation graph, not mandatory
+    [hera_com:send_unicast(Device, Msg, "UTF8") || Device <- [server | Adjacent_sensors]].
+
 get_new_robot_pos(Room) ->
     [Sensor1, Sensor2] = get_room_sensors(Room),
 
@@ -272,6 +272,7 @@ get_new_robot_pos(Room) ->
     {get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}),{Seqsensor1,Seqsensor2}}.
 
 get_room_sensors(Room) ->
+    % Returns the two sensors in the current room
     Devices = persistent_term:get(devices),
     lists:foldl(
         fun({Name, _, _}, Acc) ->
@@ -279,6 +280,25 @@ get_room_sensors(Room) ->
                 _ ->
                     case hera_data:get(room, Name) of
                         [{_, _, _, [ORoom]}] when Room =:= ORoom ->
+                                [Name | Acc];
+                        _ ->
+                            Acc
+                    end
+            end
+        end,
+        [],
+        Devices
+    ).
+
+get_adjacent_sensors(Room) ->
+    % Returns all the sensors in the current room or in the adjacent rooms.
+    Devices = persistent_term:get(devices),
+    lists:foldl(
+        fun({Name, _, _}, Acc) ->
+            case Name of
+                _ ->
+                    case hera_data:get(room, Name) of
+                        [{_, _, _, [ORoom]}] when ((Room =:= ORoom) orelse (Room+1 =:= ORoom) orelse (Room-1 =:=ORoom)) ->
                                 [Name | Acc];
                         _ ->
                             Acc

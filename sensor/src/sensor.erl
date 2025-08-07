@@ -15,6 +15,7 @@ start(_Type, _Args) ->
     io:format("[SENSOR] start initialization sequence~n"),
     {ok, _} = sensor_sup:start_link(),
     hera_subscribe:subscribe(self()),
+    persistent_term:put(links, []),
     [grisp_led:flash(L, yellow, 500) || L <- [1, 2]],
     grisp:add_device(uart, pmod_maxsonar),
 
@@ -125,8 +126,11 @@ loop_config(Id) ->
     receive
         {hera_notify, ["Add_Device", Name, SIp, Port]} ->  % Received at config time to register all used sensors 
             add_device(Id, Name, SIp, Port);          
+        {hera_notify, ["Add_Link", Name, SIp, Port]} ->  % Received at config time to register the propagation links between rooms
+            add_link(Id, Name, SIp, Port);          
         {hera_notify, ["Init_pos", SPosx, SPosy, SAngle, SRoom]} -> % Register Robot Device initial position
-            store_robot_position(Id, SPosx, SPosy, SAngle, SRoom);            
+            ack_message("Pos", "robot", Id),
+            store_robot_position(Id, 1, SPosx, SPosy, SAngle, SRoom);            
         {hera_notify, ["Pos", Ids, Xs, Ys, Hs, As, RoomS]} -> % Received at config time To get all the sensors positions (X-Axis, Y-axis, Height, Angle, Room)           
             store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS);
         {hera_notify, ["Room_info", RoomId, TLx, TLy, BRx, BRy]} ->
@@ -156,6 +160,9 @@ loop_run(Id, Num) ->
             resolve_handshake(Id, Num, OPriority, OTimeClock);
         {hera_notify, ["Ok", _]} -> % Received from the other sensor to acknowledge the roles of the sensors 
             end_handshake(Id, Num);
+        {hera_notify, ["Robot_pos", SSeq, X, Y, Angle, Room]} ->
+            Seq = list_to_integer(SSeq),
+            store_robot_position(Id, Seq, X, Y, Angle, Room);            
         {hera_notify, ["Exit"]} -> % Received when the controller is exited
             io:format("~n[SENSOR] Exit message received~n"),
             reset_state(Id);
@@ -205,7 +212,27 @@ add_device(Id, Name, SIp, SPort) ->
     end,            
     loop_config(Id).
 
-store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
+add_link(Id, Name, SIp, SPort) ->
+    % Adds a device to the list of known links to other rooms
+    % @param Id : Sensor's Id set by the jumpers (Integer)
+    % @param Name : name of the device to register (String)
+    % @param SIp : IP adress (String)
+    % @param SPort : Port (String)
+    ack_message("Add_Link", Name, Id),
+    Links = persistent_term:get(links),
+    {ok, Ip} = inet:parse_address(SIp),
+    Port = list_to_integer(SPort),
+    case lists:member({Name, Ip, Port}, Links) of
+        false ->
+            io:format("[SENSOR] Discovered new link : ~p~n", [Name]),
+            NewLinks = [{Name, Ip, Port} | Links],
+            persistent_term:put(links, NewLinks);
+        _ ->
+            ok
+    end,
+    loop_config(Id).
+
+store_robot_position(Id, OSeq, SPosx, SPosy, SAngle, SRoom) ->
     % Stores the initial robot position
     % @param Id : Sensor's Id set by the jumpers (Integer)
     % @param SPosx : X axis position (String)
@@ -214,16 +241,33 @@ store_robot_position(Id, SPosx, SPosy, SAngle, SRoom) ->
     % @param SRoom : Robot room position (String)
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
-    Angle = list_to_integer(SAngle),
+    Angle = list_to_float(SAngle),
     Room = list_to_integer(SRoom),  
-    ack_message("Pos", "robot", Id),  
     case hera_data:get(robot_pos) of
+        [{_, Seq, _, [_, _, _, _]}] when Seq < OSeq->            
+            hera_data:store(robot_pos, robot, OSeq, [Posx, Posy, Angle, Room]),
+            propagate_pos(OSeq, SPosx, SPosy, SAngle, SRoom);
         [{_, _, _, [_, _, _, _]}] ->
             ok;
         [] ->
             hera_data:store(robot_pos, robot, 1, [Posx, Posy, Angle, Room])
-    end,        
-    loop_config(Id).
+    end,      
+    if 
+        OSeq == 1 ->  
+            loop_config(Id);
+        true ->
+            loop_run(Id, OSeq)
+    end.
+
+propagate_pos(Seq, SPosx, SPosy, SAngle, SRoom) ->
+    Msg = "Robot_pos,"++integer_to_list(Seq)++","++SPosx++","++SPosy++","++SAngle++","++SRoom,
+    case persistent_term:get(sensor_role) of
+        master ->
+            ok;
+        slave ->
+            [hera_com:send_link(Link, Ip, Port, Msg, "UTF8") || {Link, Ip, Port} <- persistent_term:get(links)]
+    end.
+
 
 store_sensor_position(Id, Ids, Xs, Ys, Hs, As, RoomS) ->
     % Store the position of a sensor
@@ -286,7 +330,7 @@ start_measures(Id) ->
     persistent_term:put(sonar_measure, Sonar_Pid),
            
     [grisp_led:color(L, green) || L <- [1, 2]],
-    loop_run(Id, 0).
+    loop_run(Id, 2).
 
 resolve_handshake(Id, Num, OPriority, OTimeClock) ->
     % Sends a message with the informations concerning the sensors role definition

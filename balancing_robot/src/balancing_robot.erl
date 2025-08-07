@@ -158,7 +158,7 @@ store_robot_position(SPosx, SPosy, SAngle, SRoom) ->
     % @param SRoom : Robot room position (String)
     Posx = list_to_float(SPosx),
     Posy = list_to_float(SPosy),
-    Angle = list_to_integer(SAngle),
+    Angle = list_to_float(SAngle),
     Room = list_to_integer(SRoom),  
     ack_message("Pos", "robot"),
     case hera_data:get(robot_pos) of
