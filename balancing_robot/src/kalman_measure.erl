@@ -38,8 +38,8 @@ init(_Args) ->
         x_or => mat:matrix([[1],[0],[0],[0]]),
         p_or => mat:diag([1,1,1,1]),
         seq => 2,
-        seqS1 => 2,
-        seqS2 => 2
+        seqS1 => 0,
+        seqS2 => 0
     },
 
     {ok, State, #{
@@ -198,8 +198,8 @@ measure(State) ->
         end,
 
             hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
-            send_robot_pos([Xf, Yf,  ThetaDegrees, Room]),
-            {ok, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState};
+            send_robot_pos(Seq, [Xf, Yf,  ThetaDegrees, Room]),
+            {no_share, NewState}; % If no propag graph, delete prev line and replace no_share by a ok clause (see hera_measure module)
         [] ->
             {undefined, State}
     
@@ -250,16 +250,15 @@ calibrate_speed() ->
     OffsetR = lists:sum(SpeedsR) / N,
     persistent_term:put(i2c_offset, {OffsetL, OffsetR}).
 
-
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
 %============================================================================================================================================       
 
-send_robot_pos(Pos) ->
-    Pos_string = string:join([lists:flatten(io_lib:format("~p", [Val])) || Val <- Pos], ","),
-    Msg = "Robot_pos," ++ Pos_string,
-    hera_com:send_unicast(server, Msg, "UTF8").
-            
+send_robot_pos(Seq, [Xf,Yf, ThetaDegrees, Room]) ->
+    Msg = "Robot_pos," ++ integer_to_list(Seq) ++","++ float_to_list(Xf) ++ "," ++ float_to_list(Yf) ++ "," ++ float_to_list(ThetaDegrees) ++ "," ++ integer_to_list(Room),
+    Adjacent_sensors = get_adjacent_sensors(Room), % To impose the propagation graph, not mandatory
+    [hera_com:send_unicast(Device, Msg, "UTF8") || Device <- [server | Adjacent_sensors]].
+
 get_new_robot_pos(Room) ->
     [Sensor1, Sensor2] = get_room_sensors(Room),
 
@@ -272,6 +271,7 @@ get_new_robot_pos(Room) ->
     {get_pos({X1, Y1}, {X2, Y2}, {Dist1} , {Dist2},{TLx, TLy, BRx, BRy}),{Seqsensor1,Seqsensor2}}.
 
 get_room_sensors(Room) ->
+    % Returns the two sensors in the current room
     Devices = persistent_term:get(devices),
     lists:foldl(
         fun({Name, _, _}, Acc) ->
@@ -279,6 +279,25 @@ get_room_sensors(Room) ->
                 _ ->
                     case hera_data:get(room, Name) of
                         [{_, _, _, [ORoom]}] when Room =:= ORoom ->
+                                [Name | Acc];
+                        _ ->
+                            Acc
+                    end
+            end
+        end,
+        [],
+        Devices
+    ).
+
+get_adjacent_sensors(Room) ->
+    % Returns all the sensors in the current room or in the adjacent rooms.
+    Devices = persistent_term:get(devices),
+    lists:foldl(
+        fun({Name, _, _}, Acc) ->
+            case Name of
+                _ ->
+                    case hera_data:get(room, Name) of
+                        [{_, _, _, [ORoom]}] when ((Room =:= ORoom) orelse (Room+1 =:= ORoom) orelse (Room-1 =:=ORoom)) ->
                                 [Name | Acc];
                         _ ->
                             Acc
@@ -365,8 +384,6 @@ determine_robot_room(X, Y, OldRoom, RoomNum) ->
             OldRoom
     end.
 
-
-
 scale(List, Factor) ->
     [X*Factor || X <- List].
 
@@ -395,7 +412,9 @@ get_val_nav_2(R) ->
     %R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
     R0 = ahrs([Az,Ay,-Ax], [(Mz-MBz),(My-MBy),-(Mx-MBx)]),
     mat:tr(R0),
+
     {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
+
 i2c_read() ->
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
@@ -424,7 +443,6 @@ normalize_quat([Q0, Q1, Q2, Q3]) ->
     Norm = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
     [[Q0 / Norm], [Q1 / Norm], [Q2 / Norm], [Q3 / Norm]].
 
-
 kalman_orientation(Xor,Por,T1,T0) ->
     Dtor = (T1-T0)/1000.0,
     Rorien = q2dcm(mat:to_array(Xor)),
@@ -451,7 +469,6 @@ kalman_orientation(Xor,Por,T1,T0) ->
     {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
     {Xor1, Por1} = hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor),
     {Xor1,Por1}.
-
 
 q2dcm([Q0, Q1, Q2, Q3]) -> 
     R00 = 2 * (Q0 * Q0 + Q1 * Q1) - 1,

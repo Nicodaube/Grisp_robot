@@ -1,6 +1,6 @@
 class Robot:
     real_pos = (0,0)
-    angle = 0
+    angle = 0.0
     room = -1
     ip = "1"
     port = 0
@@ -15,5 +15,5 @@ class Robot:
     def update_pos(self, x:float, y: float, angle: int, room: int) -> None:
         print("[ROBOT] is at " + str((x, y)) + " with an angle of " + str(angle) + " in room " + str(room))
         self.real_pos = (x, y)
-        self.angle = angle
+        self.angle = float(angle)
         self.room = room
