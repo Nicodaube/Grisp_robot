@@ -199,7 +199,7 @@ measure(State) ->
 
             hera_data:store(robot_pos, robot, Seq, [Xf, Yf,  ThetaDegrees, Room]),
             send_robot_pos(Seq, [Xf, Yf,  ThetaDegrees, Room]),
-            {no_share, [Xf,Yf, ThetaDegrees, Room], robot_pos, robot, NewState}; % If no propag graph, delete prev line and replace no_share by ok
+            {no_share, NewState}; % If no propag graph, delete prev line and replace no_share by a ok clause (see hera_measure module)
         [] ->
             {undefined, State}
     
@@ -249,7 +249,6 @@ calibrate_speed() ->
     OffsetL = lists:sum(SpeedsL) / N,
     OffsetR = lists:sum(SpeedsR) / N,
     persistent_term:put(i2c_offset, {OffsetL, OffsetR}).
-
 
 %============================================================================================================================================
 %======================================================= HELPER FUNC ========================================================================
@@ -367,7 +366,6 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
-
 determine_robot_room(X, Y, OldRoom) ->
     determine_robot_room(X, Y, OldRoom, 0).
 determine_robot_room(X, Y, OldRoom, RoomNum) ->
@@ -384,8 +382,6 @@ determine_robot_room(X, Y, OldRoom, RoomNum) ->
             io:format("[KALMAN_MEASURE] Error: Not in a known room~n"),
             OldRoom
     end.
-
-
 
 scale(List, Factor) ->
     [X*Factor || X <- List].
@@ -415,7 +411,8 @@ get_val_nav_2(R) ->
     %R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
     R0 = ahrs([Az,Ay,-Ax], [(Mz-MBz),(My-MBy),-(Mx-MBx)]),
     mat:tr(R0),
-    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
+    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}.
+
 i2c_read() ->
     %Receive I2C and conversion
     I2Cbus = persistent_term:get(i2c),
@@ -444,7 +441,6 @@ normalize_quat([Q0, Q1, Q2, Q3]) ->
     Norm = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
     [[Q0 / Norm], [Q1 / Norm], [Q2 / Norm], [Q3 / Norm]].
 
-
 kalman_orientation(Xor,Por,T1,T0) ->
     Dtor = (T1-T0)/1000.0,
     Rorien = q2dcm(mat:to_array(Xor)),
@@ -471,7 +467,6 @@ kalman_orientation(Xor,Por,T1,T0) ->
     {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
     {Xor1, Por1} = hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor),
     {Xor1,Por1}.
-
 
 q2dcm([Q0, Q1, Q2, Q3]) -> 
     R00 = 2 * (Q0 * Q0 + Q1 * Q1) - 1,
