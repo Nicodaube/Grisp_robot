@@ -366,6 +366,7 @@ check_good_point(Xout1, Yout1, Xout2, Yout2, TLx, TLy, BRx, BRy) ->
             end
     end.
 
+
 determine_robot_room(X, Y, OldRoom) ->
     determine_robot_room(X, Y, OldRoom, 0).
 determine_robot_room(X, Y, OldRoom, RoomNum) ->
@@ -411,7 +412,8 @@ get_val_nav_2(R) ->
     %R0 = ahrs([Ax,Ay,Az], [(Mx-MBx),My-MBy,(Mz-MBz)]),
     R0 = ahrs([Az,Ay,-Ax], [(Mz-MBz),(My-MBy),-(Mx-MBx)]),
     mat:tr(R0),
-    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}.
+
+    {mat:matrix([Acc]), RotAcc, mat:matrix([Gyro]), Mag,R0}. 
 
 i2c_read() ->
     %Receive I2C and conversion
