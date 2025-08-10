@@ -17,6 +17,7 @@ robot_init() ->
     process_flag(priority, max),
 
     calibrate(),
+    calibrate2(),
 
     {X0, P0} = init_kalman(),
 
@@ -124,6 +125,36 @@ calibrate() ->
     io:format("[ROBOT] Done calibrating~n"),
     grisp_led:flash(1, green, 500),
     persistent_term:put(gy0, Gy0).    
+
+calibrate2() ->
+    N=500,
+    Gyro_data = [ pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])
+                || _ <- lists:seq(1, N) ],
+
+    G_x_List = [ X || [X,_,_] <- Gyro_data ],
+    G_y_List = [ Y || [_,Y,_] <- Gyro_data ],
+    G_z_List = [ Z || [_,_,Z] <- Gyro_data ],
+
+    AngVel_data = [pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]) || _ <- lists:seq(1, N)],
+
+    M_x_List = [ X || [X,_,_] <- AngVel_data ],
+    M_y_List = [ Y || [_,Y,_] <- AngVel_data ],
+    M_z_List = [ Z || [_,_,Z] <- AngVel_data ],
+
+    Acc_data = [ pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]) || _ <- lists:seq(1, N) ],
+
+    Accc_x_List = [ X || [X,_,_] <- Acc_data ],
+    Accc_y_List = [ Y || [_,Y,_] <- Acc_data ],
+    Accc_z_List = [ Z || [_,_,Z] <- Acc_data ],
+
+    [Gx0_pos, Gy0_pos, Gz0_pos] = [lists:sum(List) / N || List <- [G_x_List, G_y_List, G_z_List]],
+    [Mx0, My0, Mz0] = [lists:sum(List) / N || List <- [M_x_List, M_y_List, M_z_List]],
+    [Accx0, Accy0, Accz0] = [lists:sum(List) / N || List <- [Accc_x_List, Accc_y_List, Accc_z_List]],
+    io:format("[KALMAN_MEASURE] Done calibrating~n"),
+
+    persistent_term:put(gyro_init, {Gx0_pos, Gy0_pos, Gz0_pos}),
+    persistent_term:put(mag_init, {Mx0, My0, Mz0}),
+    persistent_term:put(acc_init, {Accx0, Accy0, Accz0}).
 
 init_kalman() ->
     % Initiating kalman constants
