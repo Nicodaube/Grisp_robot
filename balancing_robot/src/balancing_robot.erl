@@ -16,7 +16,7 @@ start(_Type, _Args) ->
     pmod_nav:config(acc, #{odr_g => {hz,238}}),
     numerl:init(),
     timer:sleep(2000),
-    spawn(main_loop, robot_init, []),
+    spawn(stability_layer, robot_init, []),
     hera_subscribe:subscribe(self()),
     config(),
     loop_config(),
@@ -224,15 +224,15 @@ start_measures() ->
     % @param Id : Sensor's Id set by the jumpers (Integer)
     io:format("=================================================================================================~n"),
     io:format("~n~n[ROBOT] Start received, starting the computing phase~n"),            
-    {ok, Kalman_Pid} = hera:start_measure(kalman_measure, []),
-    persistent_term:put(kalman_measure, Kalman_Pid),
+    {ok, Position_Pid} = hera:start_measure(position_layer, []),
+    persistent_term:put(position_layer, Position_Pid),
     [grisp_led:color(L, green) || L <- [1, 2]],
     loop_run(). 
 
 reset_state() ->
     % Kills all hera_measures modules, resets all data and jump back to server discovery
     % @param Id : Sensor's Id set by the jumpers (Integer)
-    exit_module(kalman_measure),
+    exit_module(position_layer),
 
     timer:sleep(500),
     reset_data(),
@@ -247,7 +247,7 @@ reset_state() ->
 reset_data() ->
     % Delete all config dependent and hera_measures data
 
-    persistent_term:erase(kalman_measure),
+    persistent_term:erase(position_layer),
     hera_com:reset_devices(), 
     hera_data:reset(),
     io:format("[ROBOT] Data resetted~n~n~n~n"),

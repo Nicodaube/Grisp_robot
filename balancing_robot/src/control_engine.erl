@@ -1,4 +1,4 @@
--module(stability_engine).
+-module(control_engine).
 
 -export([controller/3]).
 
