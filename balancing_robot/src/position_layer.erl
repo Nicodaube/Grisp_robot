@@ -1,4 +1,4 @@
--module(kalman_measure).
+-module(position_layer).
 
 -behavior(hera_measure).
 
@@ -28,8 +28,6 @@
 init(_Args) ->
     timer:sleep(1000),
     io:format("~n[KALMAN_MEASURE] Starting measurements~n"),
-    calibrate2(),
-
     calibrate_speed(),
     State = #{
         t0 => erlang:system_time()/1.0e6,
@@ -208,35 +206,7 @@ measure(State) ->
 %======================================================= CALIBRATION FUNC ===================================================================
 %============================================================================================================================================
 
-calibrate2() ->
-    N=500,
-    Gyro_data = [ pmod_nav:read(acc, [out_x_g, out_y_g, out_z_g])
-                || _ <- lists:seq(1, N) ],
 
-    G_x_List = [ X || [X,_,_] <- Gyro_data ],
-    G_y_List = [ Y || [_,Y,_] <- Gyro_data ],
-    G_z_List = [ Z || [_,_,Z] <- Gyro_data ],
-
-    AngVel_data = [pmod_nav:read(mag, [out_x_m, out_y_m, out_z_m]) || _ <- lists:seq(1, N)],
-
-    M_x_List = [ X || [X,_,_] <- AngVel_data ],
-    M_y_List = [ Y || [_,Y,_] <- AngVel_data ],
-    M_z_List = [ Z || [_,_,Z] <- AngVel_data ],
-
-    Acc_data = [ pmod_nav:read(acc, [out_x_xl, out_y_xl, out_z_xl]) || _ <- lists:seq(1, N) ],
-
-    Accc_x_List = [ X || [X,_,_] <- Acc_data ],
-    Accc_y_List = [ Y || [_,Y,_] <- Acc_data ],
-    Accc_z_List = [ Z || [_,_,Z] <- Acc_data ],
-
-    [Gx0_pos, Gy0_pos, Gz0_pos] = [lists:sum(List) / N || List <- [G_x_List, G_y_List, G_z_List]],
-    [Mx0, My0, Mz0] = [lists:sum(List) / N || List <- [M_x_List, M_y_List, M_z_List]],
-    [Accx0, Accy0, Accz0] = [lists:sum(List) / N || List <- [Accc_x_List, Accc_y_List, Accc_z_List]],
-    io:format("[KALMAN_MEASURE] Done calibrating~n"),
-
-    persistent_term:put(gyro_init, {Gx0_pos, Gy0_pos, Gz0_pos}),
-    persistent_term:put(mag_init, {Mx0, My0, Mz0}),
-    persistent_term:put(acc_init, {Accx0, Accy0, Accz0}).
 
 calibrate_speed() ->
     I2Cbus = persistent_term:get(i2c),
@@ -466,8 +436,15 @@ kalman_orientation(Xor,Por,T1,T0) ->
     Zor = mat:tr(Quat),
     Ror = mat:diag([?VAR_R,?VAR_R,?VAR_R,?VAR_R]),
 
-    {Xor0, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
-    {Xor1, Por1} = hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor),
+    {Xor00, Por0} = hera_kalman:predict({Xor,Por}, For, Qor),
+    Xor0 = normalize_vec4(Xor00),
+    Zor_used = case qdot(mat:to_array(Zor), mat:to_array(Xor0)) > 0 of
+              true  -> Zor;
+              false -> mat:'*'(-1, Zor)
+           end,
+    {Xor11, Por1} = hera_kalman:update({Xor0, Por0}, Hor, Ror, Zor_used),
+    Xor1 = normalize_vec4(Xor11),
+ 
     {Xor1,Por1}.
 
 q2dcm([Q0, Q1, Q2, Q3]) -> 
@@ -490,16 +467,45 @@ q2dcm([Q0, Q1, Q2, Q3]) ->
     ]).
 
 dcm2quat(R) ->
-    [R11,R12,R13,R21,R22,R23,R31,R32,R33] = mat:to_array(R),
-    Q12 = 0.25*(1+R11+R22+R33),
-    Q1 = math:sqrt(Q12),
-    V = [
-        4*Q12,
-        R32-R23,
-        R13-R31,
-        R21-R12
-    ],
-    mat:matrix([scale(V, (0.25/Q1))]).
+    [R00,R01,R02,
+     R10,R11,R12,
+     R20,R21,R22] = mat:to_array(R),
+    Tr = R00 + R11 + R22,
+    {Q0,Q1,Q2,Q3} =
+      case Tr > 0 of
+        true ->
+          S = math:sqrt(Tr + 1.0) * 2.0,
+          {0.25*S,
+           (R21 - R12) / S,
+           (R02 - R20) / S,
+           (R10 - R01) / S};
+        false ->
+          case (R00 > R11) andalso (R00 > R22) of
+            true ->
+              S = math:sqrt(1.0 + R00 - R11 - R22) * 2.0,
+              {(R21 - R12) / S,
+               0.25*S,
+               (R01 + R10) / S,
+               (R02 + R20) / S};
+            false ->
+              case R11 > R22 of
+                true ->
+                  S = math:sqrt(1.0 + R11 - R00 - R22) * 2.0,
+                  {(R02 - R20) / S,
+                   (R01 + R10) / S,
+                   0.25*S,
+                   (R12 + R21) / S};
+                false ->
+                  S = math:sqrt(1.0 + R22 - R00 - R11) * 2.0,
+                  {(R10 - R01) / S,
+                   (R02 + R20) / S,
+                   (R12 + R21) / S,
+                   0.25*S}
+              end
+          end
+      end,
+    N = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
+    mat:matrix([[Q0/N, Q1/N, Q2/N, Q3/N]]).
 
 ahrs(Acc, Mag) ->
     Down = unit([-A || A <- Acc]),
@@ -516,3 +522,18 @@ unit(Vec) ->
 
 cross_product([U1,U2,U3], [V1,V2,V3]) -> 
     [U2*V3-U3*V2, U3*V1-U1*V3, U1*V2-U2*V1].
+
+qdot([Q11, Q12, Q13, Q14], [Q21, Q22, Q23, Q24]) ->
+    Q11*Q21 + Q12*Q22 + Q13*Q23 + Q14*Q24.
+
+normalize_vec4(Q) ->
+  [Q0,Q1,Q2,Q3] = mat:to_array(Q),
+  N = math:sqrt(Q0*Q0 + Q1*Q1 + Q2*Q2 + Q3*Q3),
+  mat:matrix([[Q0/N],[Q1/N],[Q2/N],[Q3/N]]).
+
+wrap_angle_deg(Angle) ->
+    Wrapped = math:fmod(Angle + 180, 360),
+    case Wrapped < 0 of
+        true -> Wrapped + 360 - 180;
+        false -> Wrapped - 180
+    end.
